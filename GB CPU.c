@@ -144,25 +144,41 @@ void ADD_ar8(struct GB_CPU* cpu, uint8_t r8){
  * @param cpu point to GB_CPU
  */
 void ADD_hl2a(struct GB_CPU* cpu){
-    
-    uint16_t i = 0; //temp variable that can hold overflow
 
-    // Need MMU to write // Add HL to A, order doesnt matter bc addition
-    /*
-    cpu->_r.f = 0; // Clear flags
+    uint32_t i = 0;
+    uint16_t b = (uint16_t)(cpu->_r.h + cpu->_r.l);
+    uint8_t a = cpu->_r.a;
 
-    if(!(i & 255)){
-        cpu->_r.f |= Z_FLAG; // TLDR: if a = 0 set f to 0, 0x80 is the zero denotation, the if checks if register a is a value b/t 1-255 if not then proceed.
+    i = a + b;
+
+    cpu->_r.f &= ~N_FLAG;
+
+    uint8_t hc = (a ^ b ^ i) & C_FLAG;
+
+    if(hc != 0){
+        cpu->_r.f |= H_FLAG;
+    }
+    else{
+        cpu->_r.f &= ~H_FLAG;
     }
 
-    if(i > 255){
-        cpu->_r.f |= C_FLAG; //TLDR: f = a - 255, 0x10 is the carry operator which means its equal to the leftovers of the last operation that went over 255 or under 0, check is simple.
+    if(!(i & 65535)){
+        cpu->_r.f |= Z_FLAG; // TLDR: if i = 0 set f to 0, 0x80 is the zero denotation, the if checks if the result of the math is a value b/t 1-255 if not then proceed.
+    }
+    else{
+        cpu->_r.f &= ~Z_FLAG;
     }
 
-    cpu->_r.a = (uint8_t)i; //sets result to a 
-    cpu->_r.m = 1; cpu->_r.t = 4; //Time of last cycle
+    if(i > 65535){
+        cpu->_r.f |= C_FLAG; //if overflow happened, add overflow flag to flag stack
+    }
+    else{
+        cpu->_r.f &= ~C_FLAG;
+    }
+
+    cpu->_r.a = (uint8_t)((i & 0xF << 8) + (i & 0xF)); //sets result to a 
+    cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
-    */
 }
 
 /**
