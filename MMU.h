@@ -1,3 +1,6 @@
+#ifndef MMU_H
+#define MMU_H
+
 /*
 Start date: 06/23/2025
 Last updated: 06/23/2025
@@ -8,6 +11,9 @@ Update log:
     *07/10/2025
         rewrote to be MMU.h
         added comments
+    *07/24/2025
+        added function outlines
+        added ifndef to properly implement the cooperation of MMU and CPU
 */
 
 /* Summary of file:
@@ -49,3 +55,16 @@ struct MMU{
     struct MBC mbc;
 };
 
+void MMU_reset(struct MMU* mmu){}// reset variables
+
+bool MMU_load(struct MMU* mmu, const char* filepath){} // load in file
+
+uint8_t MMU_rb(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu){} // Read byte
+
+uint16_t MMU_rw(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu){} // Read word
+
+void MMU_wb(struct MMU* mmu, uint16_t addr, uint8_t val){} // write byte
+
+void MMU_ww(struct MMU* mmu, uint16_t addr, uint8_t val){} // write word
+
+#endif MMU_H

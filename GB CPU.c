@@ -22,6 +22,11 @@ Update log:
         tested universal ADD_ar8 (it worked)
         reworked all adds to properly handle flags
         reworked comments (needs further depth)
+    *07/24/2025
+        implemented ADD(A, HL)
+        implemented ADD HL's
+        implemented ADD (A, n)
+        implemented ADD (SP, d)
 */
 
 
@@ -32,63 +37,10 @@ Gameboy CPU, this is where all the opcodes are, where the flags are defined, reg
 //Includes needed
 #include <stdio.h> // standard in out
 #include <stdint.h> // uint8 and uint16 
-//#include "MMU.c" // memory manipulation unit interface
+#include "MMU.h" // memory manipulation unit interface
+#include "GB CPU.h" // blueprint for this file 
 
 
-//FLAGS
-#define Z_FLAG 0x80 // bit 7 (zero flag)
-#define N_FLAG 0x40 // bit 6 (subtraction flag)
-#define H_FLAG 0x20 // bit 5 (Half Carry Flag)
-#define C_FLAG 0x10 // bit 4 (Carry Flag)
-/*
- * will take a minute here to explain the gameboy flag system as i understand it
- 
- f is a uint8_t register that holds flags based on the first 4 bits of the 8 bits
-
- hexadecimal notation "0x##" is a 16 bit notation that is translated to 8 bits by breaking the two numbers after "0x" into their 4 bit equivalents
-
- so hex notation is "0x" followed by upper 4 bit and lower 4 bit meaning "0x80" is 1000 + 0000 is the 8 bit set : 1000 0000
- */
-
-
-/**
- * @brief Structure that holds the GB cpu registers
- */
-struct GB_Registers{
-
-    uint8_t a;
-    uint8_t b;
-    uint8_t c;
-    uint8_t d;
-    uint8_t e;
-    uint8_t h;
-    uint8_t l;
-    uint8_t f; // flags register, used to indicate information about the last operation
-
-    //my 16 bit registers (uint16_t is specifcally a 16 bit int)
-    uint16_t pc;
-    uint16_t sp;
-
-    //Clock registers
-    int m;
-    int t;
-};
-
-/**
- * @brief Structure for the GB CPU clock
- */
-struct GB_Clock{
- int m;
- int t;
-};
-
-/**
- * @brief Structure that acts as the GB CPU
- */
-struct GB_CPU {
-    struct GB_Registers _r;
-    struct GB_Clock _c;
-};
 
 //opcodes / instruction functions:
 #pragma region OPcodes
@@ -139,14 +91,14 @@ void ADD_ar8(struct GB_CPU* cpu, uint8_t r8){
 }
 
 
-/** WIP
+/**
  * @brief Add HL to A, Leaves result in A AKA (ADD A, HL)
  * @param cpu point to GB_CPU
  */
-void ADD_hl2a(struct GB_CPU* cpu){
+void ADD_HL2a(struct GB_CPU* cpu){
 
-    uint32_t i = 0;
-    uint16_t b = (uint16_t)(cpu->_r.h + cpu->_r.l);
+    uint16_t i = 0;
+    uint8_t b = (MMU_rb(&cpu->mmu, ((cpu->_r.h<<8) + cpu->_r.l), cpu)); // assign uint8_t b the value read out of memory at 16 bit address created by high bit h and low bit l
     uint8_t a = cpu->_r.a;
 
     i = a + b;
@@ -162,21 +114,21 @@ void ADD_hl2a(struct GB_CPU* cpu){
         cpu->_r.f &= ~H_FLAG;
     }
 
-    if(!(i & 65535)){
+    if(!(i & 255)){
         cpu->_r.f |= Z_FLAG; // TLDR: if i = 0 set f to 0, 0x80 is the zero denotation, the if checks if the result of the math is a value b/t 1-255 if not then proceed.
     }
     else{
         cpu->_r.f &= ~Z_FLAG;
     }
 
-    if(i > 65535){
+    if(i > 255){
         cpu->_r.f |= C_FLAG; //if overflow happened, add overflow flag to flag stack
     }
     else{
         cpu->_r.f &= ~C_FLAG;
     }
 
-    cpu->_r.a = (uint8_t)((i & 0xF << 8) + (i & 0xF)); //sets result to a 
+    cpu->_r.a = (uint8_t)i; //sets result to a 
     cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
 }
@@ -200,6 +152,8 @@ void ADDHLBC(struct GB_CPU* cpu){
     else{
         cpu->_r.f &= ~C_FLAG; // performs bitwise and with a bitflipped carry flag to clear carry
     }
+
+    // not rewriting my functional and correct hc check but could also be written if ((HL^ BC ^ i) & 0x1000) {}
 
     if(((HL & 4095) + (BC & 4095)) > 4095){ //
         cpu->_r.f |= H_FLAG; // sets half carry if there is overflow on the lower bits
@@ -317,22 +271,86 @@ void ADDHLSP(struct GB_CPU* cpu){
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
 }
 
-/** WIP
- * @brief Add n to SP, Leaves result in SP AKA (ADD SP, d)
+/**
+ * @brief Add n to A, Leaves result in A AKA (ADD A, n)
  * @param cpu point to GB_CPU
- * needs memory not done
  */
 void ADD_n2a(struct GB_CPU* cpu){
     
-    uint16_t i = 0; //temp variable that can hold overflow
+    uint16_t i = 0;
+    uint8_t b = MMU_rb(&cpu->mmu, (cpu->_r.pc + 1), cpu);  // reads the very next byte of memory to find the value needed to add to a
+    uint8_t a = cpu->_r.a;
 
-    // Need MMU to write
+    i = a + b;
 
-    /*
+    cpu->_r.f &= ~N_FLAG;
+
+    uint8_t hc = (a ^ b ^ i) & C_FLAG;
+
+    if(hc != 0){
+        cpu->_r.f |= H_FLAG;
+    }
+    else{
+        cpu->_r.f &= ~H_FLAG;
+    }
+
+    if(!(i & 255)){
+        cpu->_r.f |= Z_FLAG; // TLDR: if i = 0 set f to 0, 0x80 is the zero denotation, the if checks if the result of the math is a value b/t 1-255 if not then proceed.
+    }
+    else{
+        cpu->_r.f &= ~Z_FLAG;
+    }
+
+    if(i > 255){
+        cpu->_r.f |= C_FLAG; //if overflow happened, add overflow flag to flag stack
+    }
+    else{
+        cpu->_r.f &= ~C_FLAG;
+    }
+
     cpu->_r.a = (uint8_t)i; //sets result to a 
-    cpu->_r.m = 1; cpu->_r.t = 4; //Time of last cycle
+    cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
-    */
+    cpu->_r.pc+=2; // increment counter past instruction and past value of n
+
+}
+
+/**
+ * @brief Add d to SP, Leaves result in SP AKA (ADD SP, d)
+ * @param cpu point to GB_CPU
+ */
+void ADD_SP2d(struct GB_CPU* cpu){
+
+    uint32_t i = 0;
+    int8_t b = MMU_rb(&cpu->mmu, (cpu->_r.pc + 1), cpu);  // reads the very next byte of memory to find the value needed to add to a
+    uint16_t a = cpu->_r.sp;
+
+    i = a + b;
+
+    cpu->_r.f &= ~N_FLAG;
+
+    cpu->_r.f &= ~Z_FLAG;
+
+    uint8_t hc = ((a & 0x0F) + (b & 0x0F));
+
+    if(hc > 15){
+        cpu->_r.f |= H_FLAG;
+    }
+    else{
+        cpu->_r.f &= ~H_FLAG;
+    }
+
+    if(((a & 0xFF) + (uint8_t)b) > 255){
+        cpu->_r.f |= C_FLAG; //if overflow happened, add overflow flag to flag stack
+    }
+    else{
+        cpu->_r.f &= ~C_FLAG;
+    }
+
+    cpu->_r.sp = i; //sets result to SP
+    cpu->_r.m = 4; cpu->_r.t = 16; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc+=2; // increment counter past instruction and past value of n
 }
 
 #pragma endregion ADD funtions
