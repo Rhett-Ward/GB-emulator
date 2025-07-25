@@ -27,6 +27,17 @@ Update log:
         implemented ADD HL's
         implemented ADD (A, n)
         implemented ADD (SP, d)
+        finished all ADDs
+    *07/25/2025
+        implemented SUB(A,r8)
+        implemented SUB(A,HL)
+        implemented SUB(A,n)
+        finished all SUBs
+        implemented AND(A,r8)
+        implemented AND(A,HL)
+        implemented AND(A,n)
+        finished all ANDs
+
 */
 
 
@@ -88,14 +99,14 @@ void ADD_ar8(struct GB_CPU* cpu, uint8_t r8){
     cpu->_r.a = (uint8_t)i; //sets result to a 
     cpu->_r.m = 1; cpu->_r.t = 4; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; //increment instruction pointer
 }
-
 
 /**
  * @brief Add HL to A, Leaves result in A AKA (ADD A, HL)
  * @param cpu point to GB_CPU
  */
-void ADD_HL2a(struct GB_CPU* cpu){
+void ADD_HL(struct GB_CPU* cpu){
 
     uint16_t i = 0;
     uint8_t b = (MMU_rb(&cpu->mmu, ((cpu->_r.h<<8) + cpu->_r.l), cpu)); // assign uint8_t b the value read out of memory at 16 bit address created by high bit h and low bit l
@@ -131,6 +142,7 @@ void ADD_HL2a(struct GB_CPU* cpu){
     cpu->_r.a = (uint8_t)i; //sets result to a 
     cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; //incrememnt past instruction
 }
 
 /**
@@ -167,6 +179,7 @@ void ADDHLBC(struct GB_CPU* cpu){
 
     cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; //incrememnt past instruction
 }
 
 /**
@@ -201,6 +214,7 @@ void ADDHLDE(struct GB_CPU* cpu){
 
     cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; //incrememnt past instruction
 }
 
 /**
@@ -235,6 +249,7 @@ void ADDHLHL(struct GB_CPU* cpu){
 
     cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; //incrememnt past instruction
 }
 
 /**
@@ -269,6 +284,7 @@ void ADDHLSP(struct GB_CPU* cpu){
 
     cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; //incrememnt past instruction
 }
 
 /**
@@ -358,226 +374,262 @@ void ADD_SP2d(struct GB_CPU* cpu){
 #pragma region SUB functions
 
 /**
- * @brief Subtracts B from A storing the result in A, AKA (SUB B,A)
+ * @brief Universal subtract r8 from a, store result in a
  * @param cpu pointer for GB CPU
  */
-void SUB_a2b(struct GB_CPU* cpu){
-    uint16_t i = 0; //temp variable
+void SUB_ar8(struct GB_CPU* cpu, uint8_t r8){
 
-    i = cpu->_r.a - cpu->_r.b;
+    int16_t i = 0; //temp variable
+    uint8_t b = r8;
+
+    i = cpu->_r.a - b;
+
+    cpu->_r.f = N_FLAG;
 
     if(i < 0){ // underflow check
-        cpu->_r.f = 0x50; // half carry plus some other flag
+        cpu->_r.f |= C_FLAG; // half carry plus some other flag
     }
     else{
-        cpu->_r.f = 0x40; // subtraction flag
+        cpu->_r.f &= ~C_FLAG; // subtraction flag
     }
 
-    if(!(i &= 255)){
-        cpu->_r.f |= 0x80; // zero flag
+    if(!(i & 255)){
+        cpu->_r.f |= Z_FLAG; // zero flag
     }
-    if((cpu->_r.a ^ cpu->_r.b ^ i) & C_FLAG){
-        cpu->_r.f |= 0x20; // halfcarry flag
+    else{
+        cpu->_r.f &= ~Z_FLAG;
+    }
+
+    if((cpu->_r.a ^ r8 ^ i) & C_FLAG){
+        cpu->_r.f |= H_FLAG; // halfcarry flag
+    }
+    else{
+        cpu->_r.f &= ~H_FLAG;
     }
 
     cpu->_r.a = (uint8_t)i;
     cpu->_r.m = 1; cpu->_r.t = 4; //time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; //incrememnt past instruction
 }
 
 /**
- * @brief Subtracts C from A storing the result in A, AKA (SUB B,A)
- * @param cpu pointer for GB CPU
+ * @brief Subtract HL from A, Leaves result in A AKA (SUB A, HL)
+ * @param cpu point to GB_CPU
  */
-void SUB_a2c(struct GB_CPU* cpu){
-    uint16_t i = 0; //temp variable
+void SUB_HL(struct GB_CPU* cpu){
 
-    i = cpu->_r.a - cpu->_r.c;
-
-    if(i < 0){ // underflow check
-        cpu->_r.f = 0x50; // half carry plus some other flag
-    }
-    else{
-        cpu->_r.f = 0x40; // subtraction flag
-    }
-
-    if(!(i &= 255)){
-        cpu->_r.f |= 0x80; // zero flag
-    }
-    if((cpu->_r.a ^ cpu->_r.b ^ i) & 0x10){
-        cpu->_r.f |= 0x20; // halfcarry flag
-    }
-
-    cpu->_r.a = (uint8_t)i;
-    cpu->_r.m = 1; cpu->_r.t = 4; //time of last cycle
-    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
-}
-
-/**
- * @brief Subtracts D from A storing the result in A, AKA (SUB B,A)
- * @param cpu pointer for GB CPU
- */
-void SUB_a2d(struct GB_CPU* cpu){
-    uint16_t i = 0; //temp variable
-
-    i = cpu->_r.a - cpu->_r.d;
-
-    if(i < 0){ // underflow check
-        cpu->_r.f = 0x50; // half carry plus some other flag
-    }
-    else{
-        cpu->_r.f = 0x40; // subtraction flag
-    }
-
-    if(!(i &= 255)){
-        cpu->_r.f |= 0x80; // zero flag
-    }
-    if((cpu->_r.a ^ cpu->_r.b ^ i) & 0x10){
-        cpu->_r.f |= 0x20; // halfcarry flag
-    }
-
-    cpu->_r.a = (uint8_t)i;
-    cpu->_r.m = 1; cpu->_r.t = 4; //time of last cycle
-    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
-}
-
-/**
- * @brief Subtracts E from A storing the result in A, AKA (SUB B,A)
- * @param cpu pointer for GB CPU
- */
-void SUB_a2e(struct GB_CPU* cpu){
-    uint16_t i = 0; //temp variable
-
-    i = cpu->_r.a - cpu->_r.e;
-
-    if(i < 0){ // underflow check
-        cpu->_r.f = 0x50; // half carry plus some other flag
-    }
-    else{
-        cpu->_r.f = 0x40; // subtraction flag
-    }
-
-    if(!(i &= 255)){
-        cpu->_r.f |= 0x80; // zero flag
-    }
-    if((cpu->_r.a ^ cpu->_r.b ^ i) & 0x10){
-        cpu->_r.f |= 0x20; // halfcarry flag
-    }
-
-    cpu->_r.a = (uint8_t)i;
-    cpu->_r.m = 1; cpu->_r.t = 4; //time of last cycle
-    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
-}
-
-/**
- * @brief Subtracts H from A storing the result in A, AKA (SUB H,A)
- * @param cpu pointer for GB CPU
- */
-void SUB_a2h(struct GB_CPU* cpu){
-    uint16_t i = 0; //temp variable
-
-    i = cpu->_r.a - cpu->_r.h;
-
-    if(i < 0){ // underflow check
-        cpu->_r.f = 0x50; // half carry plus some other flag
-    }
-    else{
-        cpu->_r.f = 0x40; // subtraction flag
-    }
-
-    if(!(i &= 255)){
-        cpu->_r.f |= 0x80; // zero flag
-    }
-    if((cpu->_r.a ^ cpu->_r.b ^ i) & 0x10){
-        cpu->_r.f |= 0x20; // halfcarry flag
-    }
-
-    cpu->_r.a = (uint8_t)i;
-    cpu->_r.m = 1; cpu->_r.t = 4; //time of last cycle
-    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
-}
-
-/**
- * @brief Subtracts L from A storing the result in A, AKA (SUB L,A)
- * @param cpu pointer for GB CPU
- */
-void SUB_a2l(struct GB_CPU* cpu){
+    int16_t i = 0;
+    uint8_t b = (MMU_rb(&cpu->mmu, ((cpu->_r.h<<8) + cpu->_r.l), cpu)); // assign uint8_t b the value read out of memory at 16 bit address created by high bit h and low bit l
     uint8_t a = cpu->_r.a;
-    uint8_t l = cpu->_r.l;
 
-    uint16_t temp = a - l;
-    uint8_t result = (uint8_t)temp;
+    i = a - b;
 
-    cpu->_r.f |= 0x80; // subtraction flag
+    cpu->_r.f = N_FLAG;
 
-    if(temp < 0){ // underflow check
-        cpu->_r.f = 0x50; // half carry plus some other flag
+    uint8_t hc = (a ^ b ^ i) & C_FLAG;
+
+    if(hc != 0){
+        cpu->_r.f |= H_FLAG;
     }
     else{
-        cpu->_r.f = 0x40; // subtraction flag
-    }
-        
-    if((cpu->_r.a ^ cpu->_r.l ^ a) & 0x10){
-        cpu->_r.f |= 0x20; // halfcarry flag
+        cpu->_r.f &= ~H_FLAG;
     }
 
-    
-    cpu->_r.m = 1; cpu->_r.t = 4; //time of last cycle
+    if(!(i & 255)){
+        cpu->_r.f |= Z_FLAG; // TLDR: if i = 0 set f to 0, 0x80 is the zero denotation, the if checks if the result of the math is a value b/t 1-255 if not then proceed.
+    }
+    else{
+        cpu->_r.f &= ~Z_FLAG;
+    }
+
+    if(i < 0){
+        cpu->_r.f |= C_FLAG; //if underflow happened, add underflow flag to flag stack
+    }
+    else{
+        cpu->_r.f &= ~C_FLAG;
+    }
+
+    cpu->_r.a = (uint8_t)i; //sets result to a 
+    cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; //incrememnt past instruction
 }
 
 /**
- * @brief Subtracts A from A storing the result in A, AKA (SUB A,A)
+ * @brief Subtract N from A leaves result in A AKA (SUB A, n)
  * @param cpu pointer for GB CPU
  */
-void SUB_a2a(struct GB_CPU* cpu){
-    uint16_t i = 0; //temp variable
+void SUB_an(struct GB_CPU* cpu){
 
-    i = cpu->_r.a - cpu->_r.a;
+    int16_t i = 0; //temp variable
+    uint8_t b = MMU_rb(&cpu->mmu, (cpu->_r.pc +1), cpu);
+
+    i = cpu->_r.a - b;
+
+    cpu->_r.f = N_FLAG;
 
     if(i < 0){ // underflow check
-        cpu->_r.f = 0x50; // half carry plus some other flag
+        cpu->_r.f |= C_FLAG; // half carry plus some other flag
     }
     else{
-        cpu->_r.f = 0x40; // subtraction flag
+        cpu->_r.f &= ~C_FLAG; // subtraction flag
     }
 
-    if(!(i &= 255)){
-        cpu->_r.f |= 0x80; // zero flag
+    if(!(i & 255)){
+        cpu->_r.f |= Z_FLAG; // zero flag
     }
-    if((cpu->_r.a ^ cpu->_r.b ^ i) & 0x10){
-        cpu->_r.f |= 0x20; // halfcarry flag
+    else{
+        cpu->_r.f &= ~Z_FLAG;
+    }
+
+    if((cpu->_r.a ^ b ^ i) & C_FLAG){
+        cpu->_r.f |= H_FLAG; // halfcarry flag
+    }
+    else{
+        cpu->_r.f &= ~H_FLAG;
     }
 
     cpu->_r.a = (uint8_t)i;
-    cpu->_r.m = 1; cpu->_r.t = 4; //time of last cycle
+    cpu->_r.m = 2; cpu->_r.t = 8; //time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc +=2; // move past instruction and value
 }
-
 
 #pragma endregion SUB functions
 
 #pragma region AND functions
 
 /**
- * @brief bitwise and of A and B and stores in A
+ * @brief bitwise and of A and r8 and stores in A AKA AND(A, r8)
  * @param cpu pointer to GB CPU
  */
-void AND_a2b(struct GB_CPU* cpu){
-    cpu->_r.a&=cpu->_r.b; // bitwise comparison
+void AND_ar8(struct GB_CPU* cpu, uint8_t r8){
+
+    cpu->_r.a &= r8; // bitwise comparison
+
+    cpu->_r.f &= ~N_FLAG;
 
     if (cpu->_r.a == 0) {
-        cpu->_r.f = 0x80; // if = 0 then set 0 flag
+        cpu->_r.f |= Z_FLAG; // if = 0 then set 0 flag
     } else {
-        cpu->_r.f = 0; // clear flags
+        cpu->_r.f &= ~Z_FLAG;
     }
+
+    cpu->_r.f |= H_FLAG; // sets H_flag bc docs say so
+
+    cpu->_r.f &= ~C_FLAG; // clears C_flag bc docs say so
+
 
     cpu->_r.m = 1; cpu->_r.t = 4; //time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; //incrememnt past instruction
+}
+
+/**
+ * @brief bitwise and of A and value pointed to by HL and stores in A AKA AND(A, HL)
+ * @param cpu point to GB_CPU
+ */
+void AND_HL(struct GB_CPU* cpu){
+
+    uint8_t b = (MMU_rb(&cpu->mmu, ((cpu->_r.h<<8) + cpu->_r.l), cpu)); // assign uint8_t b the value read out of memory at 16 bit address created by high bit h and low bit l
+    uint8_t a = cpu->_r.a;
+
+    cpu->_r.a &= b;
+
+    cpu->_r.f &= ~N_FLAG;
+
+    if (cpu->_r.a == 0) {
+        cpu->_r.f |= Z_FLAG; // if = 0 then set 0 flag
+    } else {
+        cpu->_r.f &= ~Z_FLAG;
+    }
+
+    cpu->_r.f |= H_FLAG; // sets H_flag bc docs say so
+
+    cpu->_r.f &= ~C_FLAG; // clears C_flag bc docs say so
+
+    cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; //incrememnt past instruction
+}
+
+/**
+ * @brief bitwise and of A and value pointed to by pc+1 and stores in A AKA AND(A, n)
+ * @param cpu point to GB_CPU
+ */
+void AND_an(struct GB_CPU* cpu){
+
+    uint8_t b = (MMU_rb(&cpu->mmu, (cpu->_r.pc + 1), cpu)); // assign uint8_t b the value read out of memory at 16 bit address created by high bit h and low bit l
+    uint8_t a = cpu->_r.a;
+
+    cpu->_r.a &= b;
+
+    cpu->_r.f &= ~N_FLAG;
+
+    if (cpu->_r.a == 0) {
+        cpu->_r.f |= Z_FLAG; // if = 0 then set 0 flag
+    } else {
+        cpu->_r.f &= ~Z_FLAG;
+    }
+
+    cpu->_r.f |= H_FLAG; // sets H_flag bc docs say so
+
+    cpu->_r.f &= ~C_FLAG; // clears C_flag bc docs say so
+
+    cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc += 2; // move past instruction and value
 }
 
 
 #pragma endregion AND funtions
+
+#pragma region LD functions
+
+/**
+ *@brief Copy the value of n into r8 AKA LD(r8,n)
+ *@param cpu pointer to GB CPU
+ *@param r8 pointer to register 
+ */
+void LD_nr8(struct GB_CPU* cpu, uint8_t* r8){
+
+    uint8_t n = MMU_rb(&cpu->mmu, (cpu->_r.pc + 1), cpu);
+
+    *r8 = n; // this should replace the value pointed to by r8 with the value of n
+
+    cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc += 2; // iterate past instruction and value
+}
+
+/**
+ *@brief Copy the value of n into r8 AKA LD(r8,n)
+ *@param cpu pointer to GB CPU
+ *@param r8 pointer to register
+ *@param r82 pointer to register
+ */
+void LD_r8(struct GB_CPU* cpu, uint8_t* r8, uint8_t r82){
+
+    *r8 = r82; // this should replace the value pointed to by r8 with the value of n
+
+    cpu->_r.m = 1; cpu->_r.t = 4; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; //incrememnt past instruction
+}
+
+/**
+ *@brief Copy the value of n into BC AKA LD(BC,nn)
+ *@param cpu pointer to GB CPU
+ bc de hl
+ */
+void LD_BC(struct GB_CPU* cpu){
+    
+    //cpu->_r.c = MMU_rb(&cpu->mmu, )
+
+}
+
+#pragma endregion LD functions
 
 
 
