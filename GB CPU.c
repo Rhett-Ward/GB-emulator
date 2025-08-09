@@ -685,6 +685,90 @@ void LD_HLn(struct GB_CPU* cpu){
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
     cpu->_r.pc += 2; //incrememnt past instruction and value
 }
+
+/**
+ * @brief copy the value held in the register HL into the address pointed to by r8 AKA LD(r8,HL)
+ * @param cpu Pointer to the cpu
+ * @param r8 8 bit register value
+ */
+void LD_r8HL(struct GB_CPU* cpu, uint8_t r8){
+    MMU_wb(&cpu->mmu, r8, ((cpu->_r.h<<8) + cpu->_r.l));
+
+    cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc += 1; //incrememnt past instruction and value
+}
+
+/**
+ * @brief copy the value in register A into the byte pointed to by r16 (r8 +r82) AKA:LD(r16, A)
+ * @param cpu Pointer to the cpu
+ * @param r8 8 bit register value, upper bit of r16
+ * @param r82 8  bit register value, lower bit of r16
+ */
+void LD_r16A(struct GB_CPU* cpu, uint8_t r8, uint8_t r82){
+    uint16_t r16 = ((r8<<8) + r82);
+    MMU_wb(&cpu->mmu, r16, cpu->_r.a);
+
+    cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc += 1; //incrememnt past instruction and value
+}
+
+/**
+ * @brief copy the value in register A into the byte pointed to by n16 (pc +1  + pc + 2) AKA:LD(n16, A)
+ * @param cpu Pointer to the cpu
+ */
+void LD_n16A(struct GB_CPU* cpu){
+    uint16_t r16 = ( (MMU_rb(&cpu->mmu, cpu->_r.pc+2, cpu)<<8) +  MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu));
+    MMU_wb(&cpu->mmu, r16, cpu->_r.a);
+
+    cpu->_r.m = 4; cpu->_r.t = 16; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc += 3; //incrememnt past instruction and value
+}
+
+/**
+ * @brief copy the value in register A into the byte pointed to by pc+1 + 0xFF00 if its between $$FF00 $FFFF AKA:LDH(n16, A)
+ * @param cpu Pointer to the cpu
+ */
+void LDH_n16A(struct GB_CPU* cpu){
+    uint16_t r16 = ( 0xFF00 +  MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu));
+
+    if(r16 >= 0xFF00 && r16 <= 0xFFFF){
+        MMU_wb(&cpu->mmu, r16, cpu->_r.a);
+    }
+
+    cpu->_r.m = 3; cpu->_r.t = 12; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc += 2; //incrememnt past instruction and value
+}
+
+/**
+ * @brief Copy the value at $FF00 + C into register A AKA:LDH(C,A)
+ * @param cpu Pointer to the cpu
+ */
+void LDHC (struct GB_CPU* cpu){
+    MMU_wb(&cpu->mmu, cpu->_r.c + 0xFF00, cpu->_r.a);
+
+    cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc += 1; //incrememnt past instruction and value
+}
+
+/**
+ * @brief copy the value held in the register r8 into the address pointed to by HL AKA LD(HL,r8)
+ * @param cpu Pointer to the cpu
+ * @param r8 8 bit register value
+ */
+void LD_HLIA(struct GB_CPU* cpu){
+    uint16_t r16 = ((cpu->_r.h<<8) + cpu->_r.l);
+    MMU_wb(&cpu->mmu, r16, cpu->_r.a);
+    r16++;
+    cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc += 1; //incrememnt past instruction and value
+}
+
 #pragma endregion LD functions
 
 
