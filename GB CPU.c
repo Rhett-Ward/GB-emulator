@@ -369,6 +369,157 @@ void ADD_SP2d(struct GB_CPU* cpu){
     cpu->_r.pc+=2; // increment counter past instruction and past value of n
 }
 
+/**
+ * @brief adds the value in r8 plus the carry flag to A
+ * @param cpu pointer to cpu
+ * @param r8 pointer to 8 bit register
+ */
+void ADC_ar8(struct GB_CPU* cpu, uint8_t r8){
+
+    uint16_t i = 0;
+    uint8_t b = r8;
+    uint8_t a = cpu->_r.a;
+    uint8_t c; // holds value of carry flag
+
+    if ((cpu->_r.f & C_FLAG) != 0){ //checks carry flag 
+        c = 1; // if carry flag
+    }else{
+        c = 0; // if not carry flag
+    }
+
+    i = a + b + c; // total (ADC)
+
+    cpu->_r.f &= ~N_FLAG;
+
+    uint8_t hc = (a ^ b ^ c ^ i) & C_FLAG; // half carry check
+
+    if(hc != 0){
+        cpu->_r.f |= H_FLAG;
+    }
+    else{
+        cpu->_r.f &= ~H_FLAG;
+    }
+
+    if(!(i & 255)){
+        cpu->_r.f |= Z_FLAG; // TLDR: if i = 0 set f to 0, 0x80 is the zero denotation, the if checks if the result of the math is a value b/t 1-255 if not then proceed.
+    }
+    else{
+        cpu->_r.f &= ~Z_FLAG;
+    }
+
+    if(i > 255){
+        cpu->_r.f |= C_FLAG; //if overflow happened, add overflow flag to flag stack
+    }
+    else{
+        cpu->_r.f &= ~C_FLAG;
+    }
+
+    cpu->_r.a = (uint8_t)i; //sets result to a 
+    cpu->_r.m = 1; cpu->_r.t = 4; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; //increment instruction pointer
+}
+
+/**
+ * @brief add the byte pointed to by HL plus the carry flag to A
+ * @param cpu pointer to the cpu
+ */
+void ADC_hl(struct GB_CPU* cpu){
+    uint16_t i = 0;
+    uint8_t b = (MMU_rb(&cpu->mmu, ((cpu->_r.h<<8) + cpu->_r.l), cpu)); // assign uint8_t b the value read out of memory at 16 bit address created by high bit h and low bit l
+    uint8_t a = cpu->_r.a;
+
+    uint8_t c; // holds value of carry flag
+
+    if ((cpu->_r.f & C_FLAG) != 0){ //checks carry flag 
+        c = 1; // if carry flag
+    }else{
+        c = 0; // if not carry flag
+    }
+
+    i = a + b + c;
+
+    cpu->_r.f &= ~N_FLAG;
+
+    uint8_t hc = (a ^ b ^ c ^ i) & C_FLAG;
+
+    if(hc != 0){
+        cpu->_r.f |= H_FLAG;
+    }
+    else{
+        cpu->_r.f &= ~H_FLAG;
+    }
+
+    if(!(i & 255)){
+        cpu->_r.f |= Z_FLAG; // TLDR: if i = 0 set f to 0, 0x80 is the zero denotation, the if checks if the result of the math is a value b/t 1-255 if not then proceed.
+    }
+    else{
+        cpu->_r.f &= ~Z_FLAG;
+    }
+
+    if(i > 255){
+        cpu->_r.f |= C_FLAG; //if overflow happened, add overflow flag to flag stack
+    }
+    else{
+        cpu->_r.f &= ~C_FLAG;
+    }
+
+    cpu->_r.a = (uint8_t)i; //sets result to a 
+    cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; //incrememnt past instruction
+}
+
+/**
+ * @brief adds the value in n8 plus the carry flag to A
+ * @param cpu pointer to cpu
+ */
+void ADC_an8(struct GB_CPU* cpu){
+
+    uint16_t i = 0;
+    uint8_t b = MMU_rb(&cpu->mmu, (cpu->_r.pc + 1), cpu);  // reads the very next byte of memory to find the value needed to add to a
+    uint8_t a = cpu->_r.a;
+    uint8_t c; // holds value of carry flag
+
+    if ((cpu->_r.f & C_FLAG) != 0){ //checks carry flag 
+        c = 1; // if carry flag
+    }else{
+        c = 0; // if not carry flag
+    }
+
+    i = a + b + c; // total (ADC)
+
+    cpu->_r.f &= ~N_FLAG;
+
+    uint8_t hc = (a ^ b ^ c ^ i) & C_FLAG; // half carry check
+
+    if(hc != 0){
+        cpu->_r.f |= H_FLAG;
+    }
+    else{
+        cpu->_r.f &= ~H_FLAG;
+    }
+
+    if(!(i & 255)){
+        cpu->_r.f |= Z_FLAG; // TLDR: if i = 0 set f to 0, 0x80 is the zero denotation, the if checks if the result of the math is a value b/t 1-255 if not then proceed.
+    }
+    else{
+        cpu->_r.f &= ~Z_FLAG;
+    }
+
+    if(i > 255){
+        cpu->_r.f |= C_FLAG; //if overflow happened, add overflow flag to flag stack
+    }
+    else{
+        cpu->_r.f &= ~C_FLAG;
+    }
+
+    cpu->_r.a = (uint8_t)i; //sets result to a 
+    cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc += 2; //increment instruction pointer
+}
+
 #pragma endregion ADD funtions
 
 #pragma region SUB functions
@@ -836,29 +987,100 @@ void LD_AHLI(struct GB_CPU* cpu){
  * @param cpu Pointer to the cpu
  */
 void LD_SPn16(struct GB_CPU* cpu){
-    hb
+    uint16_t r16 = ( (MMU_rb(&cpu->mmu, cpu->_r.pc+2, cpu)<<8) +  MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu));
+
+    //MMU_wb(&cpu->mmu, cpu->_r.sp, r16);
+    cpu->_r.sp = r16;
+
+    cpu->_r.m = 3; cpu->_r.t = 12; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc += 3; //incrememnt past instruction and value
 }
 
-#pragma endregion LD functions
+/**
+ * @brief copy SP & 0xFF at address n16 and SP >> 8 at address n16 + 1
+ * @param cpu pointer to cpu
+ */
+void LD_n16SP(struct GB_CPU* cpu){
+
+    uint16_t r16 = ( (MMU_rb(&cpu->mmu, cpu->_r.pc+2, cpu)<<8) +  MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu));
+    MMU_wb(&cpu->mmu, (r16+1), cpu->_r.sp >> 8);
+    MMU_wb(&cpu->mmu, r16, (cpu->_r.sp & 0xFF));
+
+    cpu->_r.m = 5; cpu->_r.t = 20; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc += 3; //incrememnt past instruction and value
+}
+
+/**
+ * @brief  Add the signed value e8 (d) to SP and copy the result into HL
+ * @param cpu pointer to cpu
+ */
+void LD_HLspe8(struct GB_CPU* cpu){
+
+    uint16_t r16 = ((cpu->_r.h<<8) + cpu->_r.l); // get the byte pointer held by HL
 
 
+    // Start of copied code from ADD
+    uint32_t i = 0;
+    int8_t b = MMU_rb(&cpu->mmu, (cpu->_r.pc + 1), cpu);  // reads the very next byte of memory to find the value needed to add to a
+    uint16_t a = cpu->_r.sp;
+
+    i = a + b;
+
+    cpu->_r.f &= ~N_FLAG;
+
+    cpu->_r.f &= ~Z_FLAG;
+
+    uint8_t hc = ((a & 0x0F) + (b & 0x0F));
+
+    if(hc > 15){
+        cpu->_r.f |= H_FLAG;
+    }
+    else{
+        cpu->_r.f &= ~H_FLAG;
+    }
+
+    if(((a & 0xFF) + (uint8_t)b) > 255){
+        cpu->_r.f |= C_FLAG; //if overflow happened, add overflow flag to flag stack
+    }
+    else{
+        cpu->_r.f &= ~C_FLAG;
+    }
+    // End of copied code from ADD
+
+    r16 = (uint16_t) i;
+
+    cpu->_r.h = r16>>8;
+    cpu->_r.l = r16 & 0xFF;
+
+    cpu->_r.m = 3; cpu->_r.t = 12; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc += 2; //incrememnt past instruction and value
+
+}
+
+/**
+ * @brief Copies register HL into register SP AKA LD(sp, hl)
+ * @param cpu Pointer to CPU
+ */
+void LD_HLSP(struct GB_CPU* cpu){
+
+    uint16_t r16 = ((cpu->_r.h<<8) + cpu->_r.l); // get the byte pointer held by HL
+
+    cpu->_r.sp = r16;
+
+    cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc += 1; //incrememnt past instruction and value
+}
+
+/**
+ * I FINISHED LOADS 8/27/2025
+ */
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+ #pragma endregion LD functions
 
 /**
  * @brief Function for do nothing.
@@ -866,7 +1088,16 @@ void LD_SPn16(struct GB_CPU* cpu){
 void NOP(struct GB_CPU* cpu){
     cpu->_r.m = 1; cpu->_r.t = 4; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc += 1; //incrememnt past instruction and value
 }
+
+
+
+
+
+
+
+
 
 /**
  * @brief Stop operator
