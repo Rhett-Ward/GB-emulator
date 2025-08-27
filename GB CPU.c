@@ -756,17 +756,87 @@ void LDHC (struct GB_CPU* cpu){
 }
 
 /**
- * @brief copy the value held in the register r8 into the address pointed to by HL AKA LD(HL,r8)
+ * @brief copy the value held in the register A into the address pointed to by HL then increment HL AKA LD(HLI,A)
  * @param cpu Pointer to the cpu
- * @param r8 8 bit register value
  */
 void LD_HLIA(struct GB_CPU* cpu){
-    uint16_t r16 = ((cpu->_r.h<<8) + cpu->_r.l);
-    MMU_wb(&cpu->mmu, r16, cpu->_r.a);
-    r16++;
+
+    uint16_t r16 = ((cpu->_r.h<<8) + cpu->_r.l); // get the byte pointer held by HL
+
+    MMU_wb(&cpu->mmu, r16, cpu->_r.a); // write A to that byte
+    r16++; // Increment HL
+
+    cpu->_r.h = (r16>>8) & 255; // store High byte in h 
+    cpu->_r.l = r16 & 255; // store low byte in l
+
     cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
     cpu->_r.pc += 1; //incrememnt past instruction and value
+}
+
+/**
+ * @brief copy the value held in the register A into the address pointed to by HL then decrement HL AKA LD(HLD,A)
+ * @param cpu Pointer to the cpu
+ */
+void LD_HLDA(struct GB_CPU* cpu){
+
+    uint16_t r16 = ((cpu->_r.h<<8) + cpu->_r.l); // get the byte pointer held by HL
+
+    MMU_wb(&cpu->mmu, r16, cpu->_r.a); // write A to that byte
+    r16--; // Increment HL
+
+    cpu->_r.h = (r16>>8) & 255; // store High byte in h 
+    cpu->_r.l = r16 & 255; // store low byte in l
+
+    cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc += 1; //incrememnt past instruction and value
+}
+
+/**
+ * @brief copy the address pointed to by HL into A then decrement HL AKA LD(A,HLD)
+ * @param cpu Pointer to the cpu
+ */
+void LD_AHLD(struct GB_CPU* cpu){
+
+    uint16_t r16 = ((cpu->_r.h<<8) + cpu->_r.l); // get the byte pointer held by HL
+
+    cpu->_r.a = MMU_rb(&cpu->mmu, r16, cpu);
+    r16--; // Increment HL
+
+    cpu->_r.h = (r16>>8) & 255; // store High byte in h 
+    cpu->_r.l = r16 & 255; // store low byte in l
+
+    cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc += 1; //incrememnt past instruction and value
+}
+
+/**
+ * @brief copy the address pointed to by HL into A then increment HL AKA LD(A,HLI)
+ * @param cpu Pointer to the cpu
+ */
+void LD_AHLI(struct GB_CPU* cpu){
+
+    uint16_t r16 = ((cpu->_r.h<<8) + cpu->_r.l); // get the byte pointer held by HL
+
+    cpu->_r.a = MMU_rb(&cpu->mmu, r16, cpu);
+    r16++; // Increment HL
+
+    cpu->_r.h = (r16>>8) & 255; // store High byte in h 
+    cpu->_r.l = r16 & 255; // store low byte in l
+
+    cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc += 1; //incrememnt past instruction and value
+}
+
+/**
+ * @brief Copy the value held at n16 into register sp AKA LD(SP, n16)
+ * @param cpu Pointer to the cpu
+ */
+void LD_SPn16(struct GB_CPU* cpu){
+    hb
 }
 
 #pragma endregion LD functions
