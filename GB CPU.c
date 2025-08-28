@@ -37,6 +37,14 @@ Update log:
         implemented AND(A,HL)
         implemented AND(A,n)
         finished all ANDs
+    *
+        plenty of unnoted one or two opcode writes spread out
+    *08/27/2025
+        Load opcodes finished
+    *08/28/2025
+        Compare opcodes
+        CPL opcode
+        DAA opcode
 
 */
 
@@ -1081,6 +1089,191 @@ void LD_HLSP(struct GB_CPU* cpu){
 
 
  #pragma endregion LD functions
+
+#pragma region Compare functions
+
+/**
+ * @brief Compare A r8
+ * @param cpu pointer for GB CPU
+ */
+void CP_ar8(struct GB_CPU* cpu, uint8_t r8){
+
+    int16_t i = 0; //temp variable
+    uint8_t b = r8;
+
+    i = cpu->_r.a - b;
+
+    cpu->_r.f = N_FLAG;
+
+    if(i < 0){ // underflow check
+        cpu->_r.f |= C_FLAG; // half carry plus some other flag
+    }
+    else{
+        cpu->_r.f &= ~C_FLAG; // subtraction flag
+    }
+
+    if(!(i & 255)){
+        cpu->_r.f |= Z_FLAG; // zero flag
+    }
+    else{
+        cpu->_r.f &= ~Z_FLAG;
+    }
+
+    if((cpu->_r.a ^ r8 ^ i) & C_FLAG){
+        cpu->_r.f |= H_FLAG; // halfcarry flag
+    }
+    else{
+        cpu->_r.f &= ~H_FLAG;
+    }
+
+    cpu->_r.m = 1; cpu->_r.t = 4; //time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; //incrememnt past instruction
+}
+
+/**
+ * @brief Compare A[HL]
+ * @param cpu point to GB_CPU
+ */
+void CP_HL(struct GB_CPU* cpu){
+
+    int16_t i = 0;
+    uint8_t b = (MMU_rb(&cpu->mmu, ((cpu->_r.h<<8) + cpu->_r.l), cpu)); // assign uint8_t b the value read out of memory at 16 bit address created by high bit h and low bit l
+    uint8_t a = cpu->_r.a;
+
+    i = a - b;
+
+    cpu->_r.f = N_FLAG;
+
+    uint8_t hc = (a ^ b ^ i) & C_FLAG;
+
+    if(hc != 0){
+        cpu->_r.f |= H_FLAG;
+    }
+    else{
+        cpu->_r.f &= ~H_FLAG;
+    }
+
+    if(!(i & 255)){
+        cpu->_r.f |= Z_FLAG; // TLDR: if i = 0 set f to 0, 0x80 is the zero denotation, the if checks if the result of the math is a value b/t 1-255 if not then proceed.
+    }
+    else{
+        cpu->_r.f &= ~Z_FLAG;
+    }
+
+    if(i < 0){
+        cpu->_r.f |= C_FLAG; //if underflow happened, add underflow flag to flag stack
+    }
+    else{
+        cpu->_r.f &= ~C_FLAG;
+    }
+
+    cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; //incrememnt past instruction
+}
+ 
+/**
+ * @brief Compare A n8
+ * @param cpu pointer for GB CPU
+ */
+void CP_an(struct GB_CPU* cpu){
+
+    int16_t i = 0; //temp variable
+    uint8_t b = MMU_rb(&cpu->mmu, (cpu->_r.pc +1), cpu);
+
+    i = cpu->_r.a - b;
+
+    cpu->_r.f = N_FLAG;
+
+    if(i < 0){ // underflow check
+        cpu->_r.f |= C_FLAG; // half carry plus some other flag
+    }
+    else{
+        cpu->_r.f &= ~C_FLAG; // subtraction flag
+    }
+
+    if(!(i & 255)){
+        cpu->_r.f |= Z_FLAG; // zero flag
+    }
+    else{
+        cpu->_r.f &= ~Z_FLAG;
+    }
+
+    if((cpu->_r.a ^ b ^ i) & C_FLAG){
+        cpu->_r.f |= H_FLAG; // halfcarry flag
+    }
+    else{
+        cpu->_r.f &= ~H_FLAG;
+    }
+
+    cpu->_r.m = 2; cpu->_r.t = 8; //time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc +=2; // move past instruction and value
+}
+
+#pragma endregion Compare functions
+
+
+/**
+ * @brief Decimal Adjust Accumulator
+ * @param cpu pointer to cpu
+ */
+void DAA(struct GB_CPU* cpu){
+    uint8_t adj;
+    if((cpu->_r.f & N_FLAG) != N_FLAG){
+        adj = 0;
+        if( (( cpu->_r.f & H_FLAG) == H_FLAG) || (cpu->_r.a & 0xF) > 0x9){
+            adj |= 0x6;
+        }
+        if( ( (cpu->_r.f & C_FLAG) == C_FLAG) || (cpu->_r.a > 0x99)){
+            adj |= 0x60;
+            cpu->_r.f |= C_FLAG;
+        }
+        cpu->_r.a += adj;
+    }
+    else{
+        adj = 0;
+        if( (( cpu->_r.f & H_FLAG) == H_FLAG)){
+             adj |= 0x6;
+        }
+        if( ( (cpu->_r.f & C_FLAG) == C_FLAG)){
+            adj |= 0x60;
+        }
+        cpu->_r.a -= adj;
+    }
+
+    if(cpu->_r.a == 0){
+        cpu->_r.f |= Z_FLAG; // zero flag
+    }
+    else{
+        cpu->_r.f &= ~Z_FLAG;
+    }
+
+    cpu->_r.f &= ~H_FLAG;
+
+    cpu->_r.m = 1; cpu->_r.t = 4; //time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; // move past instruction and value
+}
+
+/**
+ * @brief Complemnent accumulator (invert A) also called bitwise NOT
+ * @param cpu pointer to cpu
+ */
+void CPL(struct GB_CPU* cpu){
+    cpu->_r.a = ~cpu->_r.a;
+
+    cpu->_r.f |= N_FLAG;
+    cpu->_r.f |= H_FLAG;
+
+    cpu->_r.m = 1; cpu->_r.t = 4; //time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; // move past instruction and value
+}
+
+
+
 
 /**
  * @brief Function for do nothing.
