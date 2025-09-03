@@ -1272,7 +1272,90 @@ void CPL(struct GB_CPU* cpu){
     cpu->_r.pc++; // move past instruction and value
 }
 
+/**
+ * @brief Decrement value in r8 by 1
+ * @param cpu pointer to cpu
+ * @param r8 pointer to 8 bit register
+ */
+void DECr8(struct GB_CPU* cpu, uint8_t* r8){
+    *r8 = *r8 - 1;
+    
+    if(*r8 == 0){
+        cpu->_r.f |= Z_FLAG;
+    }else{
+        cpu->_r.f &= ~Z_FLAG;
+    }
 
+    cpu->_r.f |= N_FLAG;
+
+    if(((*r8 + 1) ^ (*r8)) & C_FLAG){
+        cpu->_r.f |= H_FLAG; // halfcarry flag
+    }
+    else{
+        cpu->_r.f &= ~H_FLAG;
+    }
+
+    cpu->_r.m = 1; cpu->_r.t = 4; //time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; // move past instruction and value
+}
+
+/**
+ *@brief Decrement the byte pointed to by HL by 1
+ *@param cpu pointer to cpu 
+ */
+void DECHL(struct GB_CPU* cpu){
+    uint8_t b = (MMU_rb(&cpu->mmu, ((cpu->_r.h<<8) + cpu->_r.l), cpu)); // assign uint8_t b the value read out of memory at 16 bit address created by high bit h and low bit l
+    b--;
+    MMU_wb(&cpu->mmu,((cpu->_r.h<<8) + cpu->_r.l), b);
+
+    if(b == 0){
+        cpu->_r.f |= Z_FLAG;
+    }else{
+        cpu->_r.f &= ~Z_FLAG;
+    }
+
+    cpu->_r.f |= N_FLAG;
+
+    if(((b+ 1) ^ (b)) & C_FLAG){
+        cpu->_r.f |= H_FLAG; // halfcarry flag
+    }else{
+        cpu->_r.f &= ~H_FLAG;
+    }
+
+    cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; // move past instruction and value
+}
+
+/**
+ * @brief Decrement the value in register r16 by 1
+ * @param cpu pointer to the cpu
+ * @param r8 pointer to 8 bit register
+ * @param r82 pointer to 8 bit register number 2
+ */
+void DECr16(struct GB_CPU* cpu, uint8_t* r8, uint8_t* r82){
+    uint16_t r16 = (((*r8)<<8) + *r82);
+    r16--;
+    *r8 = (r16>>8) & 255; // store High byte in h 
+    *r82 = r16 & 255; // store low byte in l
+
+    cpu->_r.m = 2; cpu->_r.t = 8; //time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; // move past instruction and value
+}
+
+/**
+ * @brief Decrement the value 
+ * @param cpu pointer to the cpu
+ */
+void DECsp(struct GB_CPU* cpu){
+    cpu->_r.sp--;
+
+    cpu->_r.m = 2; cpu->_r.t = 8; //time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; // move past instruction and value
+}
 
 
 /**
