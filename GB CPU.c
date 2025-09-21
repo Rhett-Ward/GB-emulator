@@ -1214,64 +1214,7 @@ void CP_an(struct GB_CPU* cpu){
 
 #pragma endregion Compare functions
 
-
-/**
- * @brief Decimal Adjust Accumulator
- * @param cpu pointer to cpu
- */
-void DAA(struct GB_CPU* cpu){
-    uint8_t adj;
-    if((cpu->_r.f & N_FLAG) != N_FLAG){
-        adj = 0;
-        if( (( cpu->_r.f & H_FLAG) == H_FLAG) || (cpu->_r.a & 0xF) > 0x9){
-            adj |= 0x6;
-        }
-        if( ( (cpu->_r.f & C_FLAG) == C_FLAG) || (cpu->_r.a > 0x99)){
-            adj |= 0x60;
-            cpu->_r.f |= C_FLAG;
-        }
-        cpu->_r.a += adj;
-    }
-    else{
-        adj = 0;
-        if( (( cpu->_r.f & H_FLAG) == H_FLAG)){
-             adj |= 0x6;
-        }
-        if( ( (cpu->_r.f & C_FLAG) == C_FLAG)){
-            adj |= 0x60;
-        }
-        cpu->_r.a -= adj;
-    }
-
-    if(cpu->_r.a == 0){
-        cpu->_r.f |= Z_FLAG; // zero flag
-    }
-    else{
-        cpu->_r.f &= ~Z_FLAG;
-    }
-
-    cpu->_r.f &= ~H_FLAG;
-
-    cpu->_r.m = 1; cpu->_r.t = 4; //time of last cycle
-    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
-    cpu->_r.pc++; // move past instruction and value
-}
-
-/**
- * @brief Complemnent accumulator (invert A) also called bitwise NOT
- * @param cpu pointer to cpu
- */
-void CPL(struct GB_CPU* cpu){
-    cpu->_r.a = ~cpu->_r.a;
-
-    cpu->_r.f |= N_FLAG;
-    cpu->_r.f |= H_FLAG;
-
-    cpu->_r.m = 1; cpu->_r.t = 4; //time of last cycle
-    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
-    cpu->_r.pc++; // move past instruction and value
-}
-
+#pragma region INC/DEC
 /**
  * @brief Decrement value in r8 by 1
  * @param cpu pointer to cpu
@@ -1357,6 +1300,388 @@ void DECsp(struct GB_CPU* cpu){
     cpu->_r.pc++; // move past instruction and value
 }
 
+/**
+ * @brief Increments the value by 1
+ * @param cpu pointer to the cpu
+ * @param r8 pointer to register 8
+ */
+void INCr8(struct GB_CPU* cpu, uint8_t* r8){
+    (*r8)++;
+
+
+    cpu->_r.f &= ~N_FLAG;
+
+    if(*r8 == 0){
+        cpu->_r.f |= Z_FLAG;
+    }else{
+        cpu->_r.f &= ~Z_FLAG;
+    }
+
+    if(((*r8 - 1) ^ (*r8)) & C_FLAG){
+        cpu->_r.f |= H_FLAG; // halfcarry flag
+    }
+    else{
+        cpu->_r.f &= ~H_FLAG;
+    }
+
+    cpu->_r.m = 1; cpu->_r.t = 4; //time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; // move past instruction and value
+}
+
+/**
+ * @brief Increment value by 1
+ * @param cpu pointer to cpu
+ */
+void INCHL(struct GB_CPU* cpu){
+
+    uint8_t b = (MMU_rb(&cpu->mmu, ((cpu->_r.h<<8) + cpu->_r.l), cpu));// assign uint8_t b the value read out of memory at 16 bit address created by high bit h and low bit l
+    b++;
+    MMU_wb(&cpu->mmu,((cpu->_r.h<<8) + cpu->_r.l), b);
+
+    cpu->_r.f &= ~N_FLAG;
+
+    if(b == 0){
+        cpu->_r.f |= Z_FLAG;
+    }else{
+        cpu->_r.f &= ~Z_FLAG;
+    }
+
+    if(((b - 1) ^ (b)) & C_FLAG){
+        cpu->_r.f |= H_FLAG; // halfcarry flag
+    }
+    else{
+        cpu->_r.f &= ~H_FLAG;
+    }
+
+    cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; // move past instruction and value
+}
+
+/**
+ * @brief Increment the value in register r16 by 1
+ * @param cpu pointer to the cpu
+ * @param r8 pointer to 8 bit register
+ * @param r82 pointer to 8 bit register number 2
+ */
+void INCr16(struct GB_CPU* cpu, uint8_t* r8, uint8_t* r82){
+    uint16_t r16 = (((*r8)<<8) + *r82);
+    r16++;
+    *r8 = (r16>>8) & 255; // store High byte in h 
+    *r82 = r16 & 255; // store low byte in l
+
+    cpu->_r.m = 2; cpu->_r.t = 8; //time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; // move past instruction and value
+}
+
+/**
+ * @brief Increment the value 
+ * @param cpu pointer to the cpu
+ */
+void INCsp(struct GB_CPU* cpu){
+    cpu->_r.sp++;
+
+    cpu->_r.m = 2; cpu->_r.t = 8; //time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; // move past instruction and value
+}
+
+#pragma endregion INC/DEC
+
+#pragma region JUMP (JP)
+
+/**
+ * @brief Jump to address n16 if the 0 flag is not checked
+ * @param cpu pointer to CPU
+ */
+void JPNZ(struct GB_CPU* cpu){
+    uint16_t r16 = ( (MMU_rb(&cpu->mmu, cpu->_r.pc+2, cpu)<<8) +  MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu)); //get n16 value
+    uint8_t tempf = cpu->_r.f;
+    if(((cpu->_r.f &= ~Z_FLAG) ==  tempf)){
+        cpu->_r.pc = r16; //set pc equal to destination (jump to n16)
+        cpu->_r.f = tempf;
+        cpu->_r.m = 4; cpu->_r.t = 16; //time of last cycle
+        cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+        return;
+    }
+    else{
+        cpu->_r.f = tempf;
+        cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
+        cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+        cpu->_r.pc+=2;
+    }
+}
+
+/**
+ * @brief Jump to address n16 if the Z flag is not checked
+ * @param cpu pointer to CPU
+ */
+void JPNZ(struct GB_CPU* cpu){
+    uint16_t r16 = ( (MMU_rb(&cpu->mmu, cpu->_r.pc+2, cpu)<<8) +  MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu)); //get n16 value
+    uint8_t tempf = cpu->_r.f;
+    if(((cpu->_r.f &= ~Z_FLAG) ==  tempf)){
+        cpu->_r.pc = r16; //set pc equal to destination (jump to n16)
+        cpu->_r.f = tempf;
+        cpu->_r.m = 4; cpu->_r.t = 16; //time of last cycle
+        cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+        return;
+    }
+    else{
+        cpu->_r.f = tempf;
+        cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
+        cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+        cpu->_r.pc+=3;
+    }
+}
+
+/**
+ * @brief Jump to address n16 if the Z flag is checked
+ * @param cpu pointer to CPU
+ */
+void JPZ(struct GB_CPU* cpu){
+    uint16_t r16 = ( (MMU_rb(&cpu->mmu, cpu->_r.pc+2, cpu)<<8) +  MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu)); //get n16 value
+    uint8_t tempf = cpu->_r.f;
+    if(!((cpu->_r.f &= ~Z_FLAG) ==  tempf)){
+        cpu->_r.pc = r16; //set pc equal to destination (jump to n16)
+        cpu->_r.f = tempf;
+        cpu->_r.m = 4; cpu->_r.t = 16; //time of last cycle
+        cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+        return;
+    }
+    else{
+        cpu->_r.f = tempf;
+        cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
+        cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+        cpu->_r.pc+=3;
+    }
+}
+
+/**
+ * @brief Jump to address n16 if the Carry flag is not checked
+ * @param cpu pointer to CPU
+ */
+void JPNC(struct GB_CPU* cpu){
+    uint16_t r16 = ( (MMU_rb(&cpu->mmu, cpu->_r.pc+2, cpu)<<8) +  MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu)); //get n16 value
+    uint8_t tempf = cpu->_r.f;
+    if(((cpu->_r.f &= ~C_FLAG) ==  tempf)){
+        cpu->_r.pc = r16; //set pc equal to destination (jump to n16)
+        cpu->_r.f = tempf;
+        cpu->_r.m = 4; cpu->_r.t = 16; //time of last cycle
+        cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+        return;
+    }
+    else{
+        cpu->_r.f = tempf;
+        cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
+        cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+        cpu->_r.pc+=3;
+    }
+}
+
+/**
+ * @brief Jump to address n16 if the Carry flag is checked
+ * @param cpu pointer to CPU
+ */
+void JPC(struct GB_CPU* cpu){
+    uint16_t r16 = ( (MMU_rb(&cpu->mmu, cpu->_r.pc+2, cpu)<<8) +  MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu)); //get n16 value
+    uint8_t tempf = cpu->_r.f;
+    if(!((cpu->_r.f &= ~C_FLAG) ==  tempf)){
+        cpu->_r.pc = r16; //set pc equal to destination (jump to n16)
+        cpu->_r.f = tempf;
+        cpu->_r.m = 4; cpu->_r.t = 16; //time of last cycle
+        cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+        return;
+    }
+    else{
+        cpu->_r.f = tempf;
+        cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
+        cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+        cpu->_r.pc+=3;
+    }
+}
+
+/**
+ * @brief Jump to address n16
+ * @param cpu pointer to CPU
+ */
+void JPn16(struct GB_CPU* cpu){
+    uint16_t r16 = ( (MMU_rb(&cpu->mmu, cpu->_r.pc+2, cpu)<<8) +  MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu)); //get n16 value
+    cpu->_r.pc = r16; //set pc equal to destination (jump to n16)
+
+    cpu->_r.m = 4; cpu->_r.t = 16; //time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+}
+
+/**
+ * @brief Jump to address HL
+ * @param cpu pointer to CPU
+ */
+void JPHL(struct GB_CPU* cpu){
+    uint16_t HL = (cpu->_r.h<<8) + cpu->_r.l; // create a variable HL that combines the two 8 bit registers h and l
+    cpu->_r.pc = HL; //set pc equal to destination (jump to n16)
+
+    cpu->_r.m = 1; cpu->_r.t = 4; //time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+}
+
+/**
+ * @brief jump a number of bytes provided by the next address in memory
+ * @param cpu pointer to cpu
+ */
+void JRn16(struct GB_CPU* cpu){
+    uint16_t r8 = MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu); //get jump value
+    if(r8 > 127){
+        r8 = (r8-256);
+        cpu->_r.pc = (cpu->_r.pc+2) + r8;
+        cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
+        cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+        return;
+    }
+    else{
+        cpu->_r.pc = (cpu->_r.pc+2) +  r8;
+        cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
+        cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+        return;
+    }
+}
+
+/**
+ * @brief Relative jump if no zero flag
+ * @param cpu pointer to cpu
+ */
+void JRNZ(struct GB_CPU* cpu){
+    uint16_t r8 = MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu); //get jump value
+    uint8_t tempf = cpu->_r.f;
+    if(((cpu->_r.f &= ~Z_FLAG) ==  tempf)){
+        if(r8 > 127){
+            cpu->_r.f = tempf;
+            r8 = (r8-256);
+            cpu->_r.pc = (cpu->_r.pc+2) + r8;
+            cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
+            cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+            return;
+        }
+        else{
+            cpu->_r.f = tempf;
+            cpu->_r.pc = (cpu->_r.pc+2) +  r8;
+            cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
+            cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+            return;
+    }
+    }
+    else{
+        cpu->_r.f = tempf;
+        cpu->_r.m = 2; cpu->_r.t = 8; //time of last cycle
+        cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+        cpu->_r.pc+=2;
+    }
+}
+
+
+/**
+ * @brief Relative jump if zero flag
+ * @param cpu pointer to cpu
+ */
+void JRZ(struct GB_CPU* cpu){
+    uint16_t r8 = MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu); //get jump value
+    uint8_t tempf = cpu->_r.f;
+    if(!((cpu->_r.f &= ~Z_FLAG) ==  tempf)){
+        if(r8 > 127){
+            cpu->_r.f = tempf;
+            r8 = (r8-256);
+            cpu->_r.pc = (cpu->_r.pc+2) + r8;
+            cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
+            cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+            return;
+        }
+        else{
+            cpu->_r.f = tempf;
+            cpu->_r.pc = (cpu->_r.pc+2) +  r8;
+            cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
+            cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+            return;
+    }
+    }
+    else{
+        cpu->_r.f = tempf;
+        cpu->_r.m = 2; cpu->_r.t = 8; //time of last cycle
+        cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+        cpu->_r.pc+=2;
+    }
+}
+
+
+/**
+ * @brief Relative jump if no carry flag
+ * @param cpu pointer to cpu
+ */
+void JRNC(struct GB_CPU* cpu){
+    uint16_t r8 = MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu); //get jump value
+    uint8_t tempf = cpu->_r.f;
+    if(((cpu->_r.f &= ~C_FLAG) ==  tempf)){
+        if(r8 > 127){
+            cpu->_r.f = tempf;
+            r8 = (r8-256);
+            cpu->_r.pc = (cpu->_r.pc+2) + r8;
+            cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
+            cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+            return;
+        }
+        else{
+            cpu->_r.f = tempf;
+            cpu->_r.pc = (cpu->_r.pc+2) +  r8;
+            cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
+            cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+            return;
+    }
+    }
+    else{
+        cpu->_r.f = tempf;
+        cpu->_r.m = 2; cpu->_r.t = 8; //time of last cycle
+        cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+        cpu->_r.pc+=2;
+    }
+}
+
+
+/**
+ * @brief Relative jump if carry flag
+ * @param cpu pointer to cpu
+ */
+void JRC(struct GB_CPU* cpu){
+    uint16_t r8 = MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu); //get jump value
+    uint8_t tempf = cpu->_r.f;
+    if(!((cpu->_r.f &= ~C_FLAG) ==  tempf)){
+        if(r8 > 127){
+            cpu->_r.f = tempf;
+            r8 = (r8-256);
+            cpu->_r.pc = (cpu->_r.pc+2) + r8;
+            cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
+            cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+            return;
+        }
+        else{
+            cpu->_r.f = tempf;
+            cpu->_r.pc = (cpu->_r.pc+2) +  r8;
+            cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
+            cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+            return;
+    }
+    }
+    else{
+        cpu->_r.f = tempf;
+        cpu->_r.m = 2; cpu->_r.t = 8; //time of last cycle
+        cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+        cpu->_r.pc+=2;
+    }
+}
+
+
+#pragma endregion JUMP (JP)
+
+#pragma region MISC / Unsortable
 
 /**
  * @brief Function for do nothing.
@@ -1367,9 +1692,64 @@ void NOP(struct GB_CPU* cpu){
     cpu->_r.pc += 1; //incrememnt past instruction and value
 }
 
+/**
+ * @brief Decimal Adjust Accumulator
+ * @param cpu pointer to cpu
+ */
+void DAA(struct GB_CPU* cpu){
+    uint8_t adj;
+    if((cpu->_r.f & N_FLAG) != N_FLAG){
+        adj = 0;
+        if( (( cpu->_r.f & H_FLAG) == H_FLAG) || (cpu->_r.a & 0xF) > 0x9){
+            adj |= 0x6;
+        }
+        if( ( (cpu->_r.f & C_FLAG) == C_FLAG) || (cpu->_r.a > 0x99)){
+            adj |= 0x60;
+            cpu->_r.f |= C_FLAG;
+        }
+        cpu->_r.a += adj;
+    }
+    else{
+        adj = 0;
+        if( (( cpu->_r.f & H_FLAG) == H_FLAG)){
+             adj |= 0x6;
+        }
+        if( ( (cpu->_r.f & C_FLAG) == C_FLAG)){
+            adj |= 0x60;
+        }
+        cpu->_r.a -= adj;
+    }
 
+    if(cpu->_r.a == 0){
+        cpu->_r.f |= Z_FLAG; // zero flag
+    }
+    else{
+        cpu->_r.f &= ~Z_FLAG;
+    }
 
+    cpu->_r.f &= ~H_FLAG;
 
+    cpu->_r.m = 1; cpu->_r.t = 4; //time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; // move past instruction and value
+}
+
+/**
+ * @brief Complemnent accumulator (invert A) also called bitwise NOT
+ * @param cpu pointer to cpu
+ */
+void CPL(struct GB_CPU* cpu){
+    cpu->_r.a = ~cpu->_r.a;
+
+    cpu->_r.f |= N_FLAG;
+    cpu->_r.f |= H_FLAG;
+
+    cpu->_r.m = 1; cpu->_r.t = 4; //time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; // move past instruction and value
+}
+
+#pragma endregion MISC / Unsortable
 
 
 
@@ -1380,13 +1760,6 @@ void NOP(struct GB_CPU* cpu){
  */
 void STOP(){
     //implement stop
-}
-
-/**
- * @brief relative jump by signed immediate if last result was not zero
- */
-void JRNZn(){
-    // return after making MMU
 }
 
 
