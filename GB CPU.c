@@ -657,7 +657,7 @@ void SUB_an(struct GB_CPU* cpu){
 
 #pragma endregion SUB functions
 
-#pragma region AND functions
+#pragma region AND / OR functions
 
 /**
  * @brief bitwise and of A and r8 and stores in A AKA AND(A, r8)
@@ -741,8 +741,79 @@ void AND_an(struct GB_CPU* cpu){
     cpu->_r.pc += 2; // move past instruction and value
 }
 
+/**
+ * @brief Bitwise or b/t reg A and r8
+ * @param cpu pointer to the cpu
+ * @param r8 r8 pointer
+ */
+void ORr8(struct GB_CPU* cpu, uint8_t* r8){
+uint8_t i = cpu->_r.a | *r8;
+cpu->_r.a |= *r8;
 
-#pragma endregion AND funtions
+if(i==0){
+    cpu->_r.f |= Z_FLAG;
+}else{
+    cpu->_r.f &= ~Z_FLAG;
+}
+
+cpu->_r.f &= ~N_FLAG;
+cpu->_r.f &= ~H_FLAG;
+cpu->_r.f &= ~C_FLAG;
+
+cpu->_r.m = 1; cpu->_r.t = 4; //Time of last cycle
+cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+cpu->_r.pc++;
+}
+
+/**
+ * @brief Bitwise or b/t reg A and HL
+ * @param cpu pointer to the cpu
+ */
+void ORHL(struct GB_CPU* cpu){
+uint8_t HL = (MMU_rb(&cpu->mmu, ((cpu->_r.h<<8) + cpu->_r.l), cpu));
+uint8_t i = cpu->_r.a | HL ;
+cpu->_r.a |= HL;
+
+if(i==0){
+    cpu->_r.f |= Z_FLAG;
+}else{
+    cpu->_r.f &= ~Z_FLAG;
+}
+
+cpu->_r.f &= ~N_FLAG;
+cpu->_r.f &= ~H_FLAG;
+cpu->_r.f &= ~C_FLAG;
+
+cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
+cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+cpu->_r.pc++;
+}
+
+/**
+ * @brief Bitwise or b/t reg A and n8
+ * @param cpu pointer to the cpu
+ */
+void ORn8(struct GB_CPU* cpu){
+uint8_t n8 = (MMU_rb(&cpu->mmu, (cpu->_r.pc+1), cpu));
+uint8_t i = cpu->_r.a | n8 ;
+cpu->_r.a |= n8;
+
+if(i==0){
+    cpu->_r.f |= Z_FLAG;
+}else{
+    cpu->_r.f &= ~Z_FLAG;
+}
+
+cpu->_r.f &= ~N_FLAG;
+cpu->_r.f &= ~H_FLAG;
+cpu->_r.f &= ~C_FLAG;
+
+cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
+cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+cpu->_r.pc+=2;
+}
+
+#pragma endregion AND / OR funtions
 
 #pragma region LD functions
 
@@ -763,11 +834,10 @@ void LD_nr8(struct GB_CPU* cpu, uint8_t* r8){
 }
 
 /**
- *@brief Copy the value of n into r8 AKA LD(r8,n)
+ *@brief Copy the value of r82 into register pointed to by r8
  *@param cpu pointer to GB CPU
  *@param r8 pointer to register
  *@param r82 pointer to register
- bc de hl
  */
 void LD_r8(struct GB_CPU* cpu, uint8_t* r8, uint8_t r82){
 
@@ -1681,6 +1751,82 @@ void JRC(struct GB_CPU* cpu){
 
 #pragma endregion JUMP (JP)
 
+#pragma region PushPop
+
+
+/**
+ * @brief pop from the stack into register F then register A.
+ * @param cpu pointer to the cpu
+ */
+void POPAF(struct GB_CPU* cpu){
+
+    cpu->_r.f = (MMU_rb(&cpu->mmu, cpu->_r.sp, cpu));
+    INCsp;
+    cpu->_r.a = MMU_rb(&cpu->mmu, cpu->_r.sp, cpu);
+    INCsp;
+
+    cpu->_r.f &= 11110000;
+
+    cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; // move past instruction and value
+}
+
+/**
+ * @brief pop sp from the stack into r16.
+ * @param cpu pointer to the cpu
+ * @param r8 pointer to the low bit
+ * @param r82 pointer to the high bit
+ */
+void POPr16(struct GB_CPU* cpu, uint8_t* r8, uint8_t* r82){
+
+    *r8 = (MMU_rb(&cpu->mmu, cpu->_r.sp, cpu));
+    INCsp;
+    *r82 = MMU_rb(&cpu->mmu, cpu->_r.sp, cpu);
+    INCsp;
+
+    cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; // move past instruction and value
+}
+
+/**
+ * @brief push register AF into the stack 
+ * @param cpu pointer to the cpu
+ */
+void PUSHAF(struct GB_CPU* cpu){
+
+    DECsp;
+    LD_r8(cpu, cpu->_r.sp,cpu->_r.a);
+    DECsp;
+    LD_r8(cpu, cpu->_r.sp, (cpu->_r.f));
+
+    cpu->_r.m = 4; cpu->_r.t = 16; //time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; // move past instruction and value
+}
+
+/**
+ * @brief push register r16 into the stack 
+ * @param cpu pointer to the cpu
+ * @param r8 pointer to low byte
+ * @param r82 pointer to high byte
+ */
+void PUSHr16(struct GB_CPU* cpu, uint8_t* r8, uint8_t* r82){
+
+    DECsp;
+    LD_r8(cpu, cpu->_r.sp, *r82);
+    DECsp;
+    LD_r8(cpu, cpu->_r.sp, *r8);
+
+    cpu->_r.m = 4; cpu->_r.t = 16; //time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; // move past instruction and value
+}
+
+
+#pragma endregion PushPop
+
 #pragma region MISC / Unsortable
 
 /**
@@ -1750,9 +1896,6 @@ void CPL(struct GB_CPU* cpu){
 }
 
 #pragma endregion MISC / Unsortable
-
-
-
 
 
 /**
