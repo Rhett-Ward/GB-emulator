@@ -655,6 +655,157 @@ void SUB_an(struct GB_CPU* cpu){
     cpu->_r.pc +=2; // move past instruction and value
 }
 
+/**
+ * @brief Subtracts the value in r8 plus the carry flag from A
+ * @param cpu pointer to cpu
+ * @param r8 pointer to 8 bit register
+ */
+void SBC_ar8(struct GB_CPU* cpu, uint8_t r8){
+
+    uint16_t i = 0;
+    uint8_t b = r8;
+    uint8_t a = cpu->_r.a;
+    uint8_t c; // holds value of carry flag
+
+    if ((cpu->_r.f & C_FLAG) != 0){ //checks carry flag 
+        c = 1; // if carry flag
+    }else{
+        c = 0; // if not carry flag
+    }
+
+    i = a - (b + c); // total (ADC)
+
+    cpu->_r.f |= N_FLAG;
+
+    uint8_t hc = (a ^ b ^ c ^ i) & C_FLAG; // half carry check
+
+    if(hc != 0){
+        cpu->_r.f |= H_FLAG;
+    }
+    else{
+        cpu->_r.f &= ~H_FLAG;
+    }
+
+    if(!(i & 255)){
+        cpu->_r.f |= Z_FLAG; // TLDR: if i = 0 set f to 0, 0x80 is the zero denotation, the if checks if the result of the math is a value b/t 1-255 if not then proceed.
+    }
+    else{
+        cpu->_r.f &= ~Z_FLAG;
+    }
+
+    if(i > 255){
+        cpu->_r.f |= C_FLAG; //if overflow happened, add overflow flag to flag stack
+    }
+    else{
+        cpu->_r.f &= ~C_FLAG;
+    }
+
+    cpu->_r.a = (uint8_t)i; //sets result to a 
+    cpu->_r.m = 1; cpu->_r.t = 4; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; //increment instruction pointer
+}
+
+/**
+ * @brief subtracts the byte pointed to by HL plus the carry flag from A
+ * @param cpu pointer to the cpu
+ */
+void SBC_hl(struct GB_CPU* cpu){
+    uint16_t i = 0;
+    uint8_t b = (MMU_rb(&cpu->mmu, ((cpu->_r.h<<8) + cpu->_r.l), cpu)); // assign uint8_t b the value read out of memory at 16 bit address created by high bit h and low bit l
+    uint8_t a = cpu->_r.a;
+
+    uint8_t c; // holds value of carry flag
+
+    if ((cpu->_r.f & C_FLAG) != 0){ //checks carry flag 
+        c = 1; // if carry flag
+    }else{
+        c = 0; // if not carry flag
+    }
+
+    i = a - (b + c);
+
+    cpu->_r.f |= N_FLAG;
+
+    uint8_t hc = (a ^ b ^ c ^ i) & C_FLAG;
+
+    if(hc != 0){
+        cpu->_r.f |= H_FLAG;
+    }
+    else{
+        cpu->_r.f &= ~H_FLAG;
+    }
+
+    if(!(i & 255)){
+        cpu->_r.f |= Z_FLAG; // TLDR: if i = 0 set f to 0, 0x80 is the zero denotation, the if checks if the result of the math is a value b/t 1-255 if not then proceed.
+    }
+    else{
+        cpu->_r.f &= ~Z_FLAG;
+    }
+
+    if(i > 255){
+        cpu->_r.f |= C_FLAG; //if overflow happened, add overflow flag to flag stack
+    }
+    else{
+        cpu->_r.f &= ~C_FLAG;
+    }
+
+    cpu->_r.a = (uint8_t)i; //sets result to a 
+    cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++; //incrememnt past instruction
+}
+
+/**
+ * @brief Subtracts the value in n8 plus the carry flag from A
+ * @param cpu pointer to cpu
+ */
+void SBC_an8(struct GB_CPU* cpu){
+
+    uint16_t i = 0;
+    uint8_t b = MMU_rb(&cpu->mmu, (cpu->_r.pc + 1), cpu);  // reads the very next byte of memory to find the value needed to add to a
+    uint8_t a = cpu->_r.a;
+    uint8_t c; // holds value of carry flag
+
+    if ((cpu->_r.f & C_FLAG) != 0){ //checks carry flag 
+        c = 1; // if carry flag
+    }else{
+        c = 0; // if not carry flag
+    }
+
+    i = a - (b + c); // total (ADC)
+
+    cpu->_r.f |= N_FLAG;
+
+    uint8_t hc = (a ^ b ^ c ^ i) & C_FLAG; // half carry check
+
+    if(hc != 0){
+        cpu->_r.f |= H_FLAG;
+    }
+    else{
+        cpu->_r.f &= ~H_FLAG;
+    }
+
+    if(!(i & 255)){
+        cpu->_r.f |= Z_FLAG; // TLDR: if i = 0 set f to 0, 0x80 is the zero denotation, the if checks if the result of the math is a value b/t 1-255 if not then proceed.
+    }
+    else{
+        cpu->_r.f &= ~Z_FLAG;
+    }
+
+    if(i > 255){
+        cpu->_r.f |= C_FLAG; //if overflow happened, add overflow flag to flag stack
+    }
+    else{
+        cpu->_r.f &= ~C_FLAG;
+    }
+
+    cpu->_r.a = (uint8_t)i; //sets result to a 
+    cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc += 2; //increment instruction pointer
+}
+
 #pragma endregion SUB functions
 
 #pragma region AND / OR functions
@@ -811,6 +962,89 @@ cpu->_r.f &= ~C_FLAG;
 cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
 cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
 cpu->_r.pc+=2;
+}
+
+/**
+ * @brief XOR A & r8
+ * @param cpu pointer to the cpu
+ * @param r8 pointer to 8 bit register
+ */
+void XORr8(struct GB_CPU* cpu, uint8_t* r8){
+
+    uint8_t tempor = cpu->_r.a | *r8;
+    uint8_t tempand = cpu->_r.a & *r8;
+    uint8_t i = tempor & ~tempand;
+    cpu->_r.a = i;
+
+    if(i==0){
+        cpu->_r.f |= Z_FLAG;
+    }else{
+        cpu->_r.f &= ~Z_FLAG;
+    }
+
+    cpu->_r.f &= ~H_FLAG;
+    cpu->_r.f &= ~C_FLAG;
+    cpu->_r.f &= ~N_FLAG;
+
+    cpu->_r.m = 1; cpu->_r.t = 4; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++;
+
+}
+
+/**
+ * @brief XOR A & HL
+ * @param cpu pointer to the cpu
+ */
+void XORHL(struct GB_CPU* cpu){
+
+    uint8_t r8 = MMU_rb(&cpu->mmu, ((cpu->_r.h << 8)+ cpu->_r.l), cpu);
+    uint8_t tempor = cpu->_r.a | r8;
+    uint8_t tempand = cpu->_r.a & r8;
+    uint8_t i = tempor & ~tempand;
+    cpu->_r.a = i;
+
+    if(i==0){
+        cpu->_r.f |= Z_FLAG;
+    }else{
+        cpu->_r.f &= ~Z_FLAG;
+    }
+
+    cpu->_r.f &= ~H_FLAG;
+    cpu->_r.f &= ~C_FLAG;
+    cpu->_r.f &= ~N_FLAG;
+
+    cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc++;
+    
+}
+
+/**
+ * @brief XOR A & n8
+ * @param cpu pointer to the cpu
+ */
+void XORn8(struct GB_CPU* cpu){
+    uint8_t r8 = MMU_rb(&cpu->mmu,(cpu->_r.pc + 1),cpu);
+    uint8_t tempor = cpu->_r.a | r8;
+    uint8_t tempand = cpu->_r.a & r8;
+    uint8_t i = tempor & ~tempand;
+    cpu->_r.a = i;
+
+    if(i==0){
+        cpu->_r.f |= Z_FLAG;
+    }else{
+        cpu->_r.f &= ~Z_FLAG;
+    }
+
+    cpu->_r.f &= ~H_FLAG;
+    cpu->_r.f &= ~C_FLAG;
+    cpu->_r.f &= ~N_FLAG;
+
+    cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc+=2;
+
 }
 
 #pragma endregion AND / OR funtions
@@ -1897,6 +2131,191 @@ void CPL(struct GB_CPU* cpu){
 
 #pragma endregion MISC / Unsortable
 
+/**
+ * @brief test bit u3 in r8, set 0 flag if bit didnt set
+ * @param cpu pointer to the cpu
+ * @param u3 3bit that says which bit to test
+ * @param r8 8 bit register pointer
+ */
+void BIT_u3r8(struct GB_CPU* cpu, uint8_t u3, uint8_t* r8){
+    uint8_t i = (u3 &= 00000111);
+
+    uint8_t res;
+
+    switch(i){
+        case 0:
+            res = (*r8 & 00000001);
+            break;
+        case 1:
+            res = (*r8 & 00000010);
+            break;
+        case 2:
+            res = (*r8 & 00000100);
+            break;
+        case 3:
+            res = (*r8 & 00001000);
+            break;
+        case 4:
+            res = (*r8 & 00010000);
+            break;
+        case 5:
+            res = (*r8 & 00100000);
+            break;
+        case 6:
+            res = (*r8 & 01000000);
+            break;
+        case 7:
+            res = (*r8 & 10000000);
+            break;          
+    }
+
+    if(res == 00000000){
+        cpu->_r.f |= Z_FLAG;
+    }else{
+        cpu->_r.f &= ~Z_FLAG;
+    }
+
+    cpu->_r.f &= ~N_FLAG;
+    cpu->_r.f |= H_FLAG;
+
+    cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc +=2;
+}
+
+/**
+ * @brief test bit u3 in HL, set 0 flag if bit didnt set
+ * @param cpu pointer to the cpu
+ * @param u3 3bit that says which bit to test
+ */
+void BIT_u3HL(struct GB_CPU* cpu, uint8_t u3){
+    uint8_t i = (u3 &= 00000111);
+
+    uint8_t r8 = MMU_RB(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), cpu);
+    uint8_t res;
+
+    switch(i){
+        case 0:
+            res = (r8 & 00000001);
+            break;
+        case 1:
+            res = (r8 & 00000010);
+            break;
+        case 2:
+            res = (r8 & 00000100);
+            break;
+        case 3:
+            res = (r8 & 00001000);
+            break;
+        case 4:
+            res = (r8 & 00010000);
+            break;
+        case 5:
+            res = (r8 & 00100000);
+            break;
+        case 6:
+            res = (r8 & 01000000);
+            break;
+        case 7:
+            res = (r8 & 10000000);
+            break;          
+    }
+
+    if(res == 00000000){
+        cpu->_r.f |= Z_FLAG;
+    }else{
+        cpu->_r.f &= ~Z_FLAG;
+    }
+
+    cpu->_r.f &= ~N_FLAG;
+    cpu->_r.f |= H_FLAG;
+
+    cpu->_r.m = 3; cpu->_r.t = 12; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc +=2;
+}
+
+/**
+ * @brief set bit u3 in HL to 0.
+ * @param cpu pointer to the cpu
+ * @param u3 3bit that says which bit to test
+ */
+void RES_u3HL(struct GB_CPU* cpu, uint8_t u3){
+    uint8_t i = (u3 &= 00000111);
+
+    uint8_t r8 = MMU_RB(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), cpu);
+
+    switch(i){
+        case 0:
+            r8 &= ~00000001;
+            break;
+        case 1:
+            r8 &= ~00000010;
+            break;
+        case 2:
+            r8 &= ~00000100;
+            break;
+        case 3:
+            r8 &= ~00001000;
+            break;
+        case 4:
+            r8 &= ~00010000;
+            break;
+        case 5:
+            r8 &= ~00100000;
+            break;
+        case 6:
+            r8 &= ~01000000;
+            break;
+        case 7:
+            r8 &= ~10000000;
+            break;          
+    }
+
+    cpu->_r.m = 4; cpu->_r.t = 16; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc +=2;
+}
+
+/**
+ * @brief set bit u3 in r8 to 0.
+ * @param cpu pointer to the cpu
+ * @param u3 3bit that says which bit to test
+ */
+void RES_u3r8(struct GB_CPU* cpu, uint8_t u3, uint8_t* r8){
+    uint8_t i = (u3 &= 00000111);
+
+    switch(i){
+        case 0:
+            *r8 &= ~00000001;
+            break;
+        case 1:
+            *r8 &= ~00000010;
+            break;
+        case 2:
+            *r8 &= ~00000100;
+            break;
+        case 3:
+            *r8 &= ~00001000;
+            break;
+        case 4:
+            *r8 &= ~00010000;
+            break;
+        case 5:
+            *r8 &= ~00100000;
+            break;
+        case 6:
+            *r8 &= ~01000000;
+            break;
+        case 7:
+            *r8 &= ~10000000;
+            break;          
+    }
+
+    cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc +=2;
+}
 
 /**
  * @brief Stop operator
