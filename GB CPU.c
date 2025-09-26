@@ -2272,6 +2272,8 @@ void RES_u3HL(struct GB_CPU* cpu, uint8_t u3){
             break;          
     }
 
+    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), r8);
+
     cpu->_r.m = 4; cpu->_r.t = 16; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
     cpu->_r.pc +=2;
@@ -2281,6 +2283,7 @@ void RES_u3HL(struct GB_CPU* cpu, uint8_t u3){
  * @brief set bit u3 in r8 to 0.
  * @param cpu pointer to the cpu
  * @param u3 3bit that says which bit to test
+ * @param r8 8bit register pointer
  */
 void RES_u3r8(struct GB_CPU* cpu, uint8_t u3, uint8_t* r8){
     uint8_t i = (u3 &= 00000111);
@@ -2312,7 +2315,96 @@ void RES_u3r8(struct GB_CPU* cpu, uint8_t u3, uint8_t* r8){
             break;          
     }
 
+    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), *r8);
+
     cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc +=2;
+}
+
+/**
+ * @brief set bit u3 in r8 to 1.
+ * @param cpu pointer to the cpu
+ * @param u3 3bit that says which bit to test
+ * @param r8 8bit register pointer
+ */
+void SET_u3r8(struct GB_CPU* cpu, uint8_t u3, uint8_t* r8){
+    uint8_t i = (u3 &= 00000111);
+
+    switch(i){
+        case 0:
+            *r8 |= 00000001;
+            break;
+        case 1:
+            *r8 |= 00000010;
+            break;
+        case 2:
+            *r8 |= 00000100;
+            break;
+        case 3:
+            *r8 |= 00001000;
+            break;
+        case 4:
+            *r8 |= 00010000;
+            break;
+        case 5:
+            *r8 |= 00100000;
+            break;
+        case 6:
+            *r8 |= 01000000;
+            break;
+        case 7:
+            *r8 |= 10000000;
+            break;          
+    }
+
+    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), *r8);
+
+    cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc +=2;
+}
+
+/**
+ * @brief set bit u3 in HL to 1.
+ * @param cpu pointer to the cpu
+ * @param u3 3bit that says which bit to test
+ */
+void SET_u3HL(struct GB_CPU* cpu, uint8_t u3){
+    uint8_t i = (u3 &= 00000111);
+
+    uint8_t r8 = MMU_RB(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), cpu);
+
+    switch(i){
+        case 0:
+            r8 |= 00000001;
+            break;
+        case 1:
+            r8 |= 00000010;
+            break;
+        case 2:
+            r8 |= 00000100;
+            break;
+        case 3:
+            r8 |= 00001000;
+            break;
+        case 4:
+            r8 |= 00010000;
+            break;
+        case 5:
+            r8 |= 00100000;
+            break;
+        case 6:
+            r8 |= 01000000;
+            break;
+        case 7:
+            r8 |= 10000000;
+            break;          
+    }
+
+    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), r8);
+
+    cpu->_r.m = 4; cpu->_r.t = 16; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
     cpu->_r.pc +=2;
 }
