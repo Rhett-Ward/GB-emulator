@@ -64,24 +64,24 @@ Gameboy CPU, this is where all the opcodes are, where the flags are defined, reg
 #include "MMU.h" // memory manipulation unit interface
 #include "GB CPU.h" // blueprint for this file 
 
-struct GB_CPU GCPU;
+struct GB_CPU GlobalCPU; //CPU var that all the ops point to
 
-void initialize(){
-    GCPU._r.a = 0;
-    GCPU._r.b = 0;
-    GCPU._r.c = 0;
-    GCPU._r.d = 0;
-    GCPU._r.e = 0;
-    GCPU._r.f = 0;
-    GCPU._r.h = 0;
-    GCPU._r.l = 0;
+void initialize(){ //set cpu up, kinda like turning the gameboy on
+    GlobalCPU._r.a = 0;
+    GlobalCPU._r.b = 0;
+    GlobalCPU._r.c = 0;
+    GlobalCPU._r.d = 0;
+    GlobalCPU._r.e = 0;
+    GlobalCPU._r.f = 0;
+    GlobalCPU._r.h = 0;
+    GlobalCPU._r.l = 0;
 
-    GCPU._r.pc = 0;
-    GCPU._r.sp = 0;
-    GCPU._r.ime = 0;
+    GlobalCPU._r.pc = 0;
+    GlobalCPU._r.sp = 0;
+    GlobalCPU._r.ime = 0;
 
-    GCPU._c.m = 0;
-    GCPU._c.t = 0;
+    GlobalCPU._c.m = 0;
+    GlobalCPU._c.t = 0;
 }
 
 //opcodes / instruction functions:
@@ -2956,24 +2956,14 @@ void JPHL(struct GB_CPU* cpu){
 }
 
 /**
- * @brief jump a number of bytes provided by the next address in memory
+ * @brief Jump a i8 number of bytes provided by pc+1, perform the jump as an offset from pc+2
  * @param cpu pointer to cpu
  */
 void JRn16(struct GB_CPU* cpu){
-    uint16_t r8 = MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu); //get jump value
-    if(r8 > 127){
-        r8 = (r8-256);
-        cpu->_r.pc = (cpu->_r.pc+2) + r8;
-        cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
-        cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
-        return;
-    }
-    else{
-        cpu->_r.pc = (cpu->_r.pc+2) +  r8;
-        cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
-        cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
-        return;
-    }
+    int8_t r8 = MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu); //get jump value
+    cpu->_r.pc = (cpu->_r.pc+2) +  r8; // set pointer to the offset from the next instruction 
+    cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
 }
 
 /**
@@ -2981,24 +2971,14 @@ void JRn16(struct GB_CPU* cpu){
  * @param cpu pointer to cpu
  */
 void JRNZ(struct GB_CPU* cpu){
-    uint16_t r8 = MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu); //get jump value
+    int8_t r8 = MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu); //get jump value
     uint8_t tempf = cpu->_r.f;
     if(((cpu->_r.f &= ~Z_FLAG) ==  tempf)){
-        if(r8 > 127){
             cpu->_r.f = tempf;
-            r8 = (r8-256);
             cpu->_r.pc = (cpu->_r.pc+2) + r8;
             cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
             cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
             return;
-        }
-        else{
-            cpu->_r.f = tempf;
-            cpu->_r.pc = (cpu->_r.pc+2) +  r8;
-            cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
-            cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
-            return;
-    }
     }
     else{
         cpu->_r.f = tempf;
@@ -3013,24 +2993,14 @@ void JRNZ(struct GB_CPU* cpu){
  * @param cpu pointer to cpu
  */
 void JRZ(struct GB_CPU* cpu){
-    uint16_t r8 = MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu); //get jump value
+    int8_t r8 = MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu); //get jump value
     uint8_t tempf = cpu->_r.f;
     if(!((cpu->_r.f &= ~Z_FLAG) ==  tempf)){
-        if(r8 > 127){
             cpu->_r.f = tempf;
-            r8 = (r8-256);
             cpu->_r.pc = (cpu->_r.pc+2) + r8;
             cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
             cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
             return;
-        }
-        else{
-            cpu->_r.f = tempf;
-            cpu->_r.pc = (cpu->_r.pc+2) +  r8;
-            cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
-            cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
-            return;
-    }
     }
     else{
         cpu->_r.f = tempf;
@@ -3045,24 +3015,14 @@ void JRZ(struct GB_CPU* cpu){
  * @param cpu pointer to cpu
  */
 void JRNC(struct GB_CPU* cpu){
-    uint16_t r8 = MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu); //get jump value
+    int8_t r8 = MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu); //get jump value
     uint8_t tempf = cpu->_r.f;
     if(((cpu->_r.f &= ~C_FLAG) ==  tempf)){
-        if(r8 > 127){
             cpu->_r.f = tempf;
-            r8 = (r8-256);
             cpu->_r.pc = (cpu->_r.pc+2) + r8;
             cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
             cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
             return;
-        }
-        else{
-            cpu->_r.f = tempf;
-            cpu->_r.pc = (cpu->_r.pc+2) +  r8;
-            cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
-            cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
-            return;
-    }
     }
     else{
         cpu->_r.f = tempf;
@@ -3077,24 +3037,14 @@ void JRNC(struct GB_CPU* cpu){
  * @param cpu pointer to cpu
  */
 void JRC(struct GB_CPU* cpu){
-    uint16_t r8 = MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu); //get jump value
+    int8_t r8 = MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu); //get jump value
     uint8_t tempf = cpu->_r.f;
     if(!((cpu->_r.f &= ~C_FLAG) ==  tempf)){
-        if(r8 > 127){
             cpu->_r.f = tempf;
-            r8 = (r8-256);
             cpu->_r.pc = (cpu->_r.pc+2) + r8;
             cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
             cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
             return;
-        }
-        else{
-            cpu->_r.f = tempf;
-            cpu->_r.pc = (cpu->_r.pc+2) +  r8;
-            cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
-            cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
-            return;
-    }
     }
     else{
         cpu->_r.f = tempf;
@@ -3397,6 +3347,25 @@ void DAA(struct GB_CPU* cpu){
 
 #pragma endregion MISC / Unsortable
 
+
+#pragma region Carry Flag Instructions
+
+/**
+ * @brief Complement Carry Flag
+ * @param cpu pointer to the cpu
+ */
+void CCF(struct GB_CPU* cpu){
+
+    cpu->_r.f &= ~N_FLAG;
+    cpu->_r.f &= ~H_FLAG;
+
+    uint8_t tempf = cpu->_r.f;
+
+    // put here a way to inverse c flag (set if not and vice versa)
+}
+
+#pragma endregion Carry Flag Instructions
+
 /**
  * @brief Stop operator
  */
@@ -3430,264 +3399,268 @@ void _CMP(struct GB_CPU* cpu){
 
 #pragma endregion OPcodes
 
-int main(){
-    while(1){
-        switch (GCPU._r.pc){
-            case 0x00: NOP(&GCPU); break;
-            case 0x01: LD_BC(&GCPU); break;
-            case 0x02: LD_r16A(&GCPU,GCPU._r.b, GCPU._r.c); break;
-            case 0x03: INCr16(&GCPU, GCPU._r.b, GCPU._r.c); break;
-            case 0x04: INCr8(&GCPU, GCPU._r.b); break;
-            case 0x05: DECr8(&GCPU, GCPU._r.b); break;
-            case 0x06: LD_nr8(&GCPU, GCPU._r.b); break;
-            case 0x07: RLCA(&GCPU); break;
-            case 0x08: LD_n16SP(&GCPU); break;
-            case 0x09: ADDHLBC(&GCPU); break;
-            case 0x0A: LD_r16A(&GCPU, GCPU._r.b, GCPU._r.c); break;
-            case 0x0B: DECr16(&GCPU, GCPU._r.b, GCPU._r.c); break;
-            case 0x0C: INCr8(&GCPU, GCPU._r.c); break;
-            case 0x0D: DECr8(&GCPU, GCPU._r.c); break;
-            case 0x0E: LD_nr8(&GCPU, GCPU._r.c); break;
-            case 0x0F: RRCA(&GCPU); break;
-            case 0x10: STOP; break;
-            case 0x11: LD_DE(&GCPU); break;
-            case 0x12: LD_r16A(&GCPU,GCPU._r.d, GCPU._r.e); break;
-            case 0x13: INCr16(&GCPU,GCPU._r.d, GCPU._r.e); break;
-            case 0x14: INCr8(&GCPU,GCPU._r.d); break;
-            case 0x15: DECr8(&GCPU,GCPU._r.d); break;
-            case 0x16: LD_nr8(&GCPU, GCPU._r.d); break;
-            case 0x17: RLA(&GCPU); break;
-            case 0x18:  break;
-            case 0x19: ADDHLDE(&GCPU); break;
-            case 0x1A: LD_r16A(&GCPU, GCPU._r.d, GCPU._r.e); break;
-            case 0x1B: break;
-            case 0x1C: break;
-            case 0x1D: break;
-            case 0x1E: break;
-            case 0x1F: break;
-            case 0x20: break;
-            case 0x21: break;
-            case 0x22: break;
-            case 0x23: break;
-            case 0x24: break;
-            case 0x25: break;
-            case 0x26: break;
-            case 0x27: break;
-            case 0x28: break;
-            case 0x29: break;
-            case 0x2A: break;
-            case 0x2B: break;
-            case 0x2C: break;
-            case 0x2D: break;
-            case 0x2E: break;
-            case 0x2F: break;
-            case 0x30: break;
-            case 0x31: break;
-            case 0x32: break;
-            case 0x33: break;
-            case 0x34: break;
-            case 0x35: break;
-            case 0x36: break;
-            case 0x37: break;
-            case 0x38: break;
-            case 0x39: break;
-            case 0x3A: break;
-            case 0x3B: break;
-            case 0x3C: break;
-            case 0x3D: break;
-            case 0x3E: break;
-            case 0x3F: break;
-            case 0x40: break;
-            case 0x41: break;
-            case 0x42: break;
-            case 0x43: break;
-            case 0x44: break;
-            case 0x45: break;
-            case 0x46: break;
-            case 0x47: break;
-            case 0x48: break;
-            case 0x49: break;
-            case 0x4A: break;
-            case 0x4B: break;
-            case 0x4C: break;
-            case 0x4D: break;
-            case 0x4E: break;
-            case 0x4F: break;
-            case 0x50: break;
-            case 0x51: break;
-            case 0x52: break;
-            case 0x53: break;
-            case 0x54: break;
-            case 0x55: break;
-            case 0x56: break;
-            case 0x57: break;
-            case 0x58: break;
-            case 0x59: break;
-            case 0x5A: break;
-            case 0x5B: break;
-            case 0x5C: break;
-            case 0x5D: break;
-            case 0x5E: break;
-            case 0x5F: break;
-            case 0x60: break;
-            case 0x61: break;
-            case 0x62: break;
-            case 0x63: break;
-            case 0x64: break;
-            case 0x65: break;
-            case 0x66: break;
-            case 0x67: break;
-            case 0x68: break;
-            case 0x69: break;
-            case 0x6A: break;
-            case 0x6B: break;
-            case 0x6C: break;
-            case 0x6D: break;
-            case 0x6E: break;
-            case 0x6F: break;
-            case 0x70: break;
-            case 0x71: break;
-            case 0x72: break;
-            case 0x73: break;
-            case 0x74: break;
-            case 0x75: break;
-            case 0x76: break;
-            case 0x77: break;
-            case 0x78: break;
-            case 0x79: break;
-            case 0x7A: break;
-            case 0x7B: break;
-            case 0x7C: break;
-            case 0x7D: break;
-            case 0x7E: break;
-            case 0x7F: break;
-            case 0x80: break;
-            case 0x81: break;
-            case 0x82: break;
-            case 0x83: break;
-            case 0x84: break;
-            case 0x85: break;
-            case 0x86: break;
-            case 0x87: break;
-            case 0x88: break;
-            case 0x89: break;
-            case 0x8A: break;
-            case 0x8B: break;
-            case 0x8C: break;
-            case 0x8D: break;
-            case 0x8E: break;
-            case 0x8F: break;
-            case 0x90: break;
-            case 0x91: break;
-            case 0x92: break;
-            case 0x93: break;
-            case 0x94: break;
-            case 0x95: break;
-            case 0x96: break;
-            case 0x97: break;
-            case 0x98: break;
-            case 0x99: break;
-            case 0x9A: break;
-            case 0x9B: break;
-            case 0x9C: break;
-            case 0x9D: break;
-            case 0x9E: break;
-            case 0x9F: break;
-            case 0xA0: break;
-            case 0xA1: break;
-            case 0xA2: break;
-            case 0xA3: break;
-            case 0xA4: break;
-            case 0xA5: break;
-            case 0xA6: break;
-            case 0xA7: break;
-            case 0xA8: break;
-            case 0xA9: break;
-            case 0xAA: break;
-            case 0xAB: break;
-            case 0xAC: break;
-            case 0xAD: break;
-            case 0xAE: break;
-            case 0xAF: break;
-            case 0xB0: break;
-            case 0xB1: break;
-            case 0xB2: break;
-            case 0xB3: break;
-            case 0xB4: break;
-            case 0xB5: break;
-            case 0xB6: break;
-            case 0xB7: break;
-            case 0xB8: break;
-            case 0xB9: break;
-            case 0xBA: break;
-            case 0xBB: break;
-            case 0xBC: break;
-            case 0xBD: break;
-            case 0xBE: break;
-            case 0xBF: break;
-            case 0xC0: break;
-            case 0xC1: break;
-            case 0xC2: break;
-            case 0xC3: break;
-            case 0xC4: break;
-            case 0xC5: break;
-            case 0xC6: break;
-            case 0xC7: break;
-            case 0xC8: break;
-            case 0xCA: break;
-            case 0xCB: break;
-            case 0xCC: break;
-            case 0xCD: break;
-            case 0xCE: break;
-            case 0xCF: break;
-            case 0xD0: break;
-            case 0xD1: break;
-            case 0xD2: break;
-            case 0xD3: break;
-            case 0xD4: break;
-            case 0xD5: break;
-            case 0xD6: break;
-            case 0xD7: break;
-            case 0xD8: break;
-            case 0xD9: break;
-            case 0xDA: break;
-            case 0xDB: break;
-            case 0xDC: break;
-            case 0xDD: break;
-            case 0xDE: break;
-            case 0xDF: break;
-            case 0xE0: break;
-            case 0xE1: break;
-            case 0xE2: break;
-            case 0xE3: break;
-            case 0xE4: break;
-            case 0xE5: break;
-            case 0xE6: break;
-            case 0xE7: break;
-            case 0xE8: break;
-            case 0xE9: break;
-            case 0xEA: break;
-            case 0xEB: break;
-            case 0xEC: break;
-            case 0xED: break;
-            case 0xEE: break;
-            case 0xEF: break;
-            case 0xF0: break;
-            case 0xF1: break;
-            case 0xF2: break;
-            case 0xF3: break;
-            case 0xF4: break;
-            case 0xF5: break;
-            case 0xF6: break;
-            case 0xF7: break;
-            case 0xF8: break;
-            case 0xF9: break;
-            case 0xFA: break;
-            case 0xFB: break;
-            case 0xFC: break;
-            case 0xFD: break;
-            case 0xFE: break;
-            case 0xFF: break;             
-        }
+// Method that actually executes the op codes
+void ExecOp(struct GB_CPU* GCPU){
+    uint8_t opcode = MMU_rb(&GCPU->mmu, GCPU->_r.pc, GCPU);
+    switch (opcode) {
+        case 0x00: NOP(GCPU); break;
+        case 0x01: LD_BC(GCPU); break;
+        case 0x02: LD_r16A(GCPU, GCPU->_r.b, GCPU->_r.c); break;
+        case 0x03: INCr16(GCPU, &GCPU->_r.b, &GCPU->_r.c); break;
+        case 0x04: INCr8(GCPU, &GCPU->_r.b); break;
+        case 0x05: DECr8(GCPU, &GCPU->_r.b); break;
+        case 0x06: LD_nr8(GCPU, &GCPU->_r.b); break;
+        case 0x07: RLCA(GCPU); break;
+        case 0x08: LD_n16SP(GCPU); break;
+        case 0x09: ADDHLBC(GCPU); break;
+        case 0x0A: LD_Ar16(GCPU, GCPU->_r.b, GCPU->_r.c); break;
+        case 0x0B: DECr16(GCPU, &GCPU->_r.b, &GCPU->_r.c); break;
+        case 0x0C: INCr8(GCPU, &GCPU->_r.c); break;
+        case 0x0D: DECr8(GCPU, &GCPU->_r.c); break;
+        case 0x0E: LD_nr8(GCPU, &GCPU->_r.c); break;
+        case 0x0F: RRCA(GCPU); break;
+        case 0x10: STOP(); break;
+        case 0x11: LD_DE(GCPU); break;
+        case 0x12: LD_r16A(GCPU, GCPU->_r.d, GCPU->_r.e); break;
+        case 0x13: INCr16(GCPU, &GCPU->_r.d, &GCPU->_r.e); break;
+        case 0x14: INCr8(GCPU, &GCPU->_r.d); break;
+        case 0x15: DECr8(GCPU, &GCPU->_r.d); break;
+        case 0x16: LD_nr8(GCPU, &GCPU->_r.d); break;
+        case 0x17: RLA(GCPU); break;
+        case 0x18: JRn16(GCPU); break;
+        case 0x19: ADDHLDE(GCPU); break;
+        case 0x1A: LD_Ar16(GCPU, GCPU->_r.d, GCPU->_r.e); break;
+        case 0x1B: DECr16(GCPU, &GCPU->_r.d, &GCPU->_r.e); break;
+        case 0x1C: INCr8(GCPU, &GCPU->_r.e); break;
+        case 0x1D: DECr8(GCPU, &GCPU->_r.e); break;
+        case 0x1E: LD_nr8(GCPU, &GCPU->_r.e); break;
+        case 0x1F: RRA(GCPU); break;
+        case 0x20: JRNZ(GCPU); break;
+        case 0x21: LD_HL(GCPU); break;
+        case 0x22: LD_HLIA(GCPU); break;
+        case 0x23: INCr16(GCPU, &GCPU->_r.h, &GCPU->_r.l); break;
+        case 0x24: INCr8(GCPU, &GCPU->_r.h); break;
+        case 0x25: DECr8(GCPU, &GCPU->_r.h); break;
+        case 0x26: LD_nr8(GCPU, &GCPU->_r.h); break;
+        case 0x27: DAA(GCPU); break;
+        case 0x28: JRZ(GCPU); break;
+        case 0x29: ADDHLHL(GCPU); break;
+        case 0x2A: LD_AHLI(GCPU); break;
+        case 0x2B: DECr16(GCPU, &GCPU->_r.h, &GCPU->_r.l); break;
+        case 0x2C: INCr8(GCPU, &GCPU->_r.l); break;
+        case 0x2D: DECr8(GCPU, &GCPU->_r.l); break;
+        case 0x2E: LD_nr8(GCPU, &GCPU->_r.l); break;
+        case 0x2F: CPL(GCPU); break;
+        case 0x30: JRNC(GCPU); break;
+        case 0x31: LD_SPn16(GCPU); break;
+        case 0x32: LD_HLDA(GCPU); break;
+        case 0x33: INCsp(GCPU); break;
+        case 0x34: INCHL(GCPU); break;
+        case 0x35: DECHL(GCPU); break;
+        case 0x36: LD_HLn(GCPU); break;
+            case 0x37: /* SCF(GCPU); // Missing function */ break;
+        case 0x38: JRC(GCPU); break;
+        case 0x39: ADDHLSP(GCPU); break;
+        case 0x3A: LD_AHLD(GCPU); break;
+        case 0x3B: DECsp(GCPU); break;
+        case 0x3C: INCr8(GCPU, &GCPU->_r.a); break;
+        case 0x3D: DECr8(GCPU, &GCPU->_r.a); break;
+        case 0x3E: LD_nr8(GCPU, &GCPU->_r.a); break;
+            case 0x3F: /* CCF(GCPU); // Missing function */ break;
+        case 0x40: LD_r8(GCPU, &GCPU->_r.b, GCPU->_r.b); break;
+        case 0x41: LD_r8(GCPU, &GCPU->_r.b, GCPU->_r.c); break;
+        case 0x42: LD_r8(GCPU, &GCPU->_r.b, GCPU->_r.d); break;
+        case 0x43: LD_r8(GCPU, &GCPU->_r.b, GCPU->_r.e); break;
+        case 0x44: LD_r8(GCPU, &GCPU->_r.b, GCPU->_r.h); break;
+        case 0x45: LD_r8(GCPU, &GCPU->_r.b, GCPU->_r.l); break;
+        case 0x46: LD_r8HL(GCPU, &GCPU->_r.b); break;
+        case 0x47: LD_r8(GCPU, &GCPU->_r.b, GCPU->_r.a); break;
+        case 0x48: LD_r8(GCPU, &GCPU->_r.c, GCPU->_r.b); break;
+        case 0x49: LD_r8(GCPU, &GCPU->_r.c, GCPU->_r.c); break;
+        case 0x4A: LD_r8(GCPU, &GCPU->_r.c, GCPU->_r.d); break;
+        case 0x4B: LD_r8(GCPU, &GCPU->_r.c, GCPU->_r.e); break;
+        case 0x4C: LD_r8(GCPU, &GCPU->_r.c, GCPU->_r.h); break;
+        case 0x4D: LD_r8(GCPU, &GCPU->_r.c, GCPU->_r.l); break;
+        case 0x4E: LD_r8HL(GCPU, &GCPU->_r.c); break;
+        case 0x4F: LD_r8(GCPU, &GCPU->_r.c, GCPU->_r.a); break;
+        case 0x50: LD_r8(GCPU, &GCPU->_r.d, GCPU->_r.b); break;
+        case 0x51: LD_r8(GCPU, &GCPU->_r.d, GCPU->_r.c); break;
+        case 0x52: LD_r8(GCPU, &GCPU->_r.d, GCPU->_r.d); break;
+        case 0x53: LD_r8(GCPU, &GCPU->_r.d, GCPU->_r.e); break;
+        case 0x54: LD_r8(GCPU, &GCPU->_r.d, GCPU->_r.h); break;
+        case 0x55: LD_r8(GCPU, &GCPU->_r.d, GCPU->_r.l); break;
+        case 0x56: LD_r8HL(GCPU, &GCPU->_r.d); break;
+        case 0x57: LD_r8(GCPU, &GCPU->_r.d, GCPU->_r.a); break;
+        case 0x58: LD_r8(GCPU, &GCPU->_r.e, GCPU->_r.b); break;
+        case 0x59: LD_r8(GCPU, &GCPU->_r.e, GCPU->_r.c); break;
+        case 0x5A: LD_r8(GCPU, &GCPU->_r.e, GCPU->_r.d); break;
+        case 0x5B: LD_r8(GCPU, &GCPU->_r.e, GCPU->_r.e); break;
+        case 0x5C: LD_r8(GCPU, &GCPU->_r.e, GCPU->_r.h); break;
+        case 0x5D: LD_r8(GCPU, &GCPU->_r.e, GCPU->_r.l); break;
+        case 0x5E: LD_r8HL(GCPU, &GCPU->_r.e); break;
+        case 0x5F: LD_r8(GCPU, &GCPU->_r.e, GCPU->_r.a); break;
+        case 0x60: LD_r8(GCPU, &GCPU->_r.h, GCPU->_r.b); break;
+        case 0x61: LD_r8(GCPU, &GCPU->_r.h, GCPU->_r.c); break;
+        case 0x62: LD_r8(GCPU, &GCPU->_r.h, GCPU->_r.d); break;
+        case 0x63: LD_r8(GCPU, &GCPU->_r.h, GCPU->_r.e); break;
+        case 0x64: LD_r8(GCPU, &GCPU->_r.h, GCPU->_r.h); break;
+        case 0x65: LD_r8(GCPU, &GCPU->_r.h, GCPU->_r.l); break;
+        case 0x66: LD_r8HL(GCPU, &GCPU->_r.h); break;
+        case 0x67: LD_r8(GCPU, &GCPU->_r.h, GCPU->_r.a); break;
+        case 0x68: LD_r8(GCPU, &GCPU->_r.l, GCPU->_r.b); break;
+        case 0x69: LD_r8(GCPU, &GCPU->_r.l, GCPU->_r.c); break;
+        case 0x6A: LD_r8(GCPU, &GCPU->_r.l, GCPU->_r.d); break;
+        case 0x6B: LD_r8(GCPU, &GCPU->_r.l, GCPU->_r.e); break;
+        case 0x6C: LD_r8(GCPU, &GCPU->_r.l, GCPU->_r.h); break;
+        case 0x6D: LD_r8(GCPU, &GCPU->_r.l, GCPU->_r.l); break;
+        case 0x6E: LD_r8HL(GCPU, &GCPU->_r.l); break;
+        case 0x6F: LD_r8(GCPU, &GCPU->_r.l, GCPU->_r.a); break;
+        case 0x70: LD_HLr8(GCPU, GCPU->_r.b); break;
+        case 0x71: LD_HLr8(GCPU, GCPU->_r.c); break;
+        case 0x72: LD_HLr8(GCPU, GCPU->_r.d); break;
+        case 0x73: LD_HLr8(GCPU, GCPU->_r.e); break;
+        case 0x74: LD_HLr8(GCPU, GCPU->_r.h); break;
+        case 0x75: LD_HLr8(GCPU, GCPU->_r.l); break;
+            case 0x76: /* HALT(GCPU); // Missing function */ break;
+        case 0x77: LD_HLr8(GCPU, GCPU->_r.a); break;
+        case 0x78: LD_r8(GCPU, &GCPU->_r.a, GCPU->_r.b); break;
+        case 0x79: LD_r8(GCPU, &GCPU->_r.a, GCPU->_r.c); break;
+        case 0x7A: LD_r8(GCPU, &GCPU->_r.a, GCPU->_r.d); break;
+        case 0x7B: LD_r8(GCPU, &GCPU->_r.a, GCPU->_r.e); break;
+        case 0x7C: LD_r8(GCPU, &GCPU->_r.a, GCPU->_r.h); break;
+        case 0x7D: LD_r8(GCPU, &GCPU->_r.a, GCPU->_r.l); break;
+        case 0x7E: LD_r8HL(GCPU, &GCPU->_r.a); break;
+        case 0x7F: LD_r8(GCPU, &GCPU->_r.a, GCPU->_r.a); break;
+        case 0x80: ADD_ar8(GCPU, GCPU->_r.b); break;
+        case 0x81: ADD_ar8(GCPU, GCPU->_r.c); break;
+        case 0x82: ADD_ar8(GCPU, GCPU->_r.d); break;
+        case 0x83: ADD_ar8(GCPU, GCPU->_r.e); break;
+        case 0x84: ADD_ar8(GCPU, GCPU->_r.h); break;
+        case 0x85: ADD_ar8(GCPU, GCPU->_r.l); break;
+        case 0x86: ADD_HL(GCPU); break;
+        case 0x87: ADD_ar8(GCPU, GCPU->_r.a); break;
+        case 0x88: ADC_ar8(GCPU, GCPU->_r.b); break;
+        case 0x89: ADC_ar8(GCPU, GCPU->_r.c); break;
+        case 0x8A: ADC_ar8(GCPU, GCPU->_r.d); break;
+        case 0x8B: ADC_ar8(GCPU, GCPU->_r.e); break;
+        case 0x8C: ADC_ar8(GCPU, GCPU->_r.h); break;
+        case 0x8D: ADC_ar8(GCPU, GCPU->_r.l); break;
+        case 0x8E: ADC_hl(GCPU); break;
+        case 0x8F: ADC_ar8(GCPU, GCPU->_r.a); break;
+        case 0x90: SUB_ar8(GCPU, GCPU->_r.b); break;
+        case 0x91: SUB_ar8(GCPU, GCPU->_r.c); break;
+        case 0x92: SUB_ar8(GCPU, GCPU->_r.d); break;
+        case 0x93: SUB_ar8(GCPU, GCPU->_r.e); break;
+        case 0x94: SUB_ar8(GCPU, GCPU->_r.h); break;
+        case 0x95: SUB_ar8(GCPU, GCPU->_r.l); break;
+        case 0x96: SUB_HL(GCPU); break;
+        case 0x97: SUB_ar8(GCPU, GCPU->_r.a); break;
+        case 0x98: SBC_ar8(GCPU, GCPU->_r.b); break;
+        case 0x99: SBC_ar8(GCPU, GCPU->_r.c); break;
+        case 0x9A: SBC_ar8(GCPU, GCPU->_r.d); break;
+        case 0x9B: SBC_ar8(GCPU, GCPU->_r.e); break;
+        case 0x9C: SBC_ar8(GCPU, GCPU->_r.h); break;
+        case 0x9D: SBC_ar8(GCPU, GCPU->_r.l); break;
+        case 0x9E: SBC_hl(GCPU); break;
+        case 0x9F: SBC_ar8(GCPU, GCPU->_r.a); break;
+        case 0xA0: AND_ar8(GCPU, GCPU->_r.b); break;
+        case 0xA1: AND_ar8(GCPU, GCPU->_r.c); break;
+        case 0xA2: AND_ar8(GCPU, GCPU->_r.d); break;
+        case 0xA3: AND_ar8(GCPU, GCPU->_r.e); break;
+        case 0xA4: AND_ar8(GCPU, GCPU->_r.h); break;
+        case 0xA5: AND_ar8(GCPU, GCPU->_r.l); break;
+        case 0xA6: AND_HL(GCPU); break;
+        case 0xA7: AND_ar8(GCPU, GCPU->_r.a); break;
+        case 0xA8: XORr8(GCPU, &GCPU->_r.b); break;
+        case 0xA9: XORr8(GCPU, &GCPU->_r.c); break;
+        case 0xAA: XORr8(GCPU, &GCPU->_r.d); break;
+        case 0xAB: XORr8(GCPU, &GCPU->_r.e); break;
+        case 0xAC: XORr8(GCPU, &GCPU->_r.h); break;
+        case 0xAD: XORr8(GCPU, &GCPU->_r.l); break;
+        case 0xAE: XORHL(GCPU); break;
+        case 0xAF: XORr8(GCPU, &GCPU->_r.a); break;
+        case 0xB0: ORr8(GCPU, &GCPU->_r.b); break;
+        case 0xB1: ORr8(GCPU, &GCPU->_r.c); break;
+        case 0xB2: ORr8(GCPU, &GCPU->_r.d); break;
+        case 0xB3: ORr8(GCPU, &GCPU->_r.e); break;
+        case 0xB4: ORr8(GCPU, &GCPU->_r.h); break;
+        case 0xB5: ORr8(GCPU, &GCPU->_r.l); break;
+        case 0xB6: ORHL(GCPU); break;
+        case 0xB7: ORr8(GCPU, &GCPU->_r.a); break;
+        case 0xB8: CP_ar8(GCPU, GCPU->_r.b); break;
+        case 0xB9: CP_ar8(GCPU, GCPU->_r.c); break;
+        case 0xBA: CP_ar8(GCPU, GCPU->_r.d); break;
+        case 0xBB: CP_ar8(GCPU, GCPU->_r.e); break;
+        case 0xBC: CP_ar8(GCPU, GCPU->_r.h); break;
+        case 0xBD: CP_ar8(GCPU, GCPU->_r.l); break;
+        case 0xBE: CP_HL(GCPU); break;
+        case 0xBF: CP_ar8(GCPU, GCPU->_r.a); break;
+        case 0xC0: RETNZ(GCPU); break;
+        case 0xC1: POPr16(GCPU, &GCPU->_r.c, &GCPU->_r.b); break;
+        case 0xC2: JPNZ(GCPU); break;
+        case 0xC3: JPn16(GCPU); break;
+        case 0xC4: CALLNZ(GCPU); break;
+        case 0xC5: PUSHr16(GCPU, &GCPU->_r.c, &GCPU->_r.b); break;
+        case 0xC6: ADD_n2a(GCPU); break;
+            case 0xC7: /* RST 00H(GCPU); // Missing function */ break;
+        case 0xC8: RETZ(GCPU); break;
+        case 0xC9: RET(GCPU); break;
+        case 0xCA: JPZ(GCPU); break;
+            case 0xCB: process_cb_opcode(GCPU); break;
+        case 0xCC: CALLZ(GCPU); break;
+        case 0xCD: CALLn16(GCPU); break;
+        case 0xCE: ADC_an8(GCPU); break;
+            case 0xCF: /* RST 08H(GCPU); // Missing function */ break;
+        case 0xD0: RETNC(GCPU); break;
+        case 0xD1: POPr16(GCPU, &GCPU->_r.e, &GCPU->_r.d); break;
+        case 0xD2: JPNC(GCPU); break;
+            case 0xD3: /* Invalid Opcode */ break;
+        case 0xD4: CALLNC(GCPU); break;
+        case 0xD5: PUSHr16(GCPU, &GCPU->_r.e, &GCPU->_r.d); break;
+        case 0xD6: SUB_an(GCPU); break;
+            case 0xD7: /* RST 10H(GCPU); // Missing function */ break;
+        case 0xD8: RETC(GCPU); break;
+            case 0xD9: /* RETI(GCPU); // Missing function */ break;
+        case 0xDA: JPC(GCPU); break;
+            case 0xDB: /* Invalid Opcode */ break;
+        case 0xDC: CALLC(GCPU); break;
+            case 0xDD: /* Invalid Opcode */ break;
+        case 0xDE: SBC_an8(GCPU); break;
+            case 0xDF: /* RST 18H(GCPU); // Missing function */ break;
+        case 0xE0: LDH_n16A(GCPU); break;
+        case 0xE1: POPr16(GCPU, &GCPU->_r.l, &GCPU->_r.h); break;
+        case 0xE2: LDHC(GCPU); break;
+            case 0xE3: /* Invalid Opcode */ break;
+            case 0xE4: /* Invalid Opcode */ break;
+        case 0xE5: PUSHr16(GCPU, &GCPU->_r.l, &GCPU->_r.h); break;
+        case 0xE6: AND_an(GCPU); break;
+            case 0xE7: /* RST 20H(GCPU); // Missing function */ break;
+        case 0xE8: ADD_SP2d(GCPU); break;
+        case 0xE9: JPHL(GCPU); break;
+        case 0xEA: LD_n16A(GCPU); break;
+            case 0xEB: /* Invalid Opcode */ break;
+            case 0xEC: /* Invalid Opcode */ break;
+            case 0xED: /* Invalid Opcode */ break;
+        case 0xEE: XORn8(GCPU); break;
+            case 0xEF: /* RST 28H(GCPU); // Missing function */ break;
+            case 0xF0: /* LDH A,(u8) - Missing function */ break;
+        case 0xF1: POPAF(GCPU); break;
+            case 0xF2: /* LD A,(C) - Missing function */ break;
+            case 0xF3: /* DI(GCPU); // Missing function */ break;
+            case 0xF4: /* Invalid Opcode */ break;
+        case 0xF5: PUSHAF(GCPU); break;
+        case 0xF6: ORn8(GCPU); break;
+            case 0xF7: /* RST 30H(GCPU); // Missing function */ break;
+        case 0xF8: LD_HLspe8(GCPU); break;
+        case 0xF9: LD_HLSP(GCPU); break;
+            case 0xFA: /* LD A,(u16) - Missing function */ break;
+            case 0xFB: /* EI(GCPU); // Missing function */ break;
+            case 0xFC: /* Invalid Opcode */ break;
+            case 0xFD: /* Invalid Opcode */ break;
+        case 0xFE: CP_an(GCPU); break;
+            case 0xFF: /* RST 38H(GCPU); // Missing function */ break;
+            default: break;
     }
 }
+
+
