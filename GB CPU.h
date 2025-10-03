@@ -46,6 +46,8 @@ struct GB_Registers{
     uint8_t l;
     uint8_t f; // flags register, used to indicate information about the last operation
 
+    uint8_t ime; // Interrupt flag
+
     //my 16 bit registers (uint16_t is specifcally a 16 bit int)
     uint16_t pc;
     uint16_t sp;
