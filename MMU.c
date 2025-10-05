@@ -168,6 +168,10 @@ uint16_t MMU_rw(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu){
 
 void MMU_wb(struct MMU* mmu, uint16_t addr, uint8_t val){
 // The val variable is a stand in for whatever value will be passed in to be written.
+    if (addr == 0xFF02){
+        putchar(read8(0xFF01));
+    }
+
     switch(addr&0xF000){
         // we use a switch statement so that we can evaluate multiple cases at the same time like below:
 

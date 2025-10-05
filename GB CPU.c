@@ -4071,6 +4071,8 @@ void main(){
     pending_ei = 0;
     stop_var = 1;
 
+    MMU_load(&GlobalCPU.mmu, "/Users/orb/Downloads/cpu_instrs/cpu_instrs.gb");
+
     while(stop_var){
 
         ExecOp(&GlobalCPU, GlobalCPU._r.pc);
@@ -4082,6 +4084,8 @@ void main(){
                 GlobalCPU._r.ime = 1;
         }
     }
+
+    
 
     }
 
