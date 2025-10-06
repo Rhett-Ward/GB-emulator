@@ -24,7 +24,7 @@ implement functionality of mmu->h
 #include <stdint.h> // uint8 and uint16
 #include <stdbool.h> // for access to boolean
 #include "MMU.h" // MMU outline
-#include "GB CPU.h" // for read write
+#include "GB_CPU.h" // for read write
 
 void MMU_reset(struct MMU* mmu){// reset variables
 

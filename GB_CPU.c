@@ -62,7 +62,7 @@ Gameboy CPU, this is where all the opcodes are, where the flags are defined, reg
 #include <stdio.h> // standard in out
 #include <stdint.h> // uint8 and uint16 
 #include "MMU.h" // memory manipulation unit interface
-#include "GB CPU.h" // blueprint for this file 
+#include "GB_CPU.h" // blueprint for this file 
 
 struct GB_CPU GlobalCPU; //CPU var that all the ops point to
 
@@ -3361,9 +3361,9 @@ void POPr16(struct GB_CPU* cpu, uint8_t* r8, uint8_t* r82){
 void PUSHAF(struct GB_CPU* cpu){
 
     DECsp;
-    LD_SPR8(cpu, cpu->_r.sp,cpu->_r.a);
+    LD_SPR8(cpu, &cpu->_r.sp,cpu->_r.a);
     DECsp;
-    LD_SPR8(cpu, cpu->_r.sp, (cpu->_r.f));
+    LD_SPR8(cpu, &cpu->_r.sp, (cpu->_r.f));
 
     cpu->_r.m = 4; cpu->_r.t = 16; //time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -3379,9 +3379,9 @@ void PUSHAF(struct GB_CPU* cpu){
 void PUSHr16(struct GB_CPU* cpu, uint8_t* r8, uint8_t* r82){
 
     DECsp;
-    LD_SPR8(cpu, cpu->_r.sp, *r82);
+    LD_SPR8(cpu, &cpu->_r.sp, *r82);
     DECsp;
-    LD_SPR8(cpu, cpu->_r.sp, *r8);
+    LD_SPR8(cpu, &cpu->_r.sp, *r8);
 
     cpu->_r.m = 4; cpu->_r.t = 16; //time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -3945,7 +3945,7 @@ void ExecOp(struct GB_CPU* GCPU, uint16_t* pc){
         case 0x7B: LD_r8(GCPU, &GCPU->_r.a, GCPU->_r.e); break;
         case 0x7C: LD_r8(GCPU, &GCPU->_r.a, GCPU->_r.h); break;
         case 0x7D: LD_r8(GCPU, &GCPU->_r.a, GCPU->_r.l); break;
-        case 0x7E: LD_r8HL(GCPU, &GCPU->_r.a); break;
+        case 0x7E: LD_r8HL(GCPU, GCPU->_r.a); break;
         case 0x7F: LD_r8(GCPU, &GCPU->_r.a, GCPU->_r.a); break;
         case 0x80: ADD_ar8(GCPU, GCPU->_r.b); break;
         case 0x81: ADD_ar8(GCPU, GCPU->_r.c); break;
@@ -4074,7 +4074,7 @@ int main(){
     pending_ei = 0;
     stop_var = 1;
 
-    MMU_load(&GlobalCPU.mmu, "/Users/orb/Downloads/cpu_instrs/cpu_instrs.gb");
+    MMU_load(&GlobalCPU.mmu, "\\Users\\rhett\\Downloads\\GB-emulator\\cpu_instrs.gb");
 
     while(stop_var){
 
