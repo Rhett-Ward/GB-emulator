@@ -1837,28 +1837,28 @@ void BIT_u3r8(struct GB_CPU* cpu, uint8_t u3, uint8_t* r8){
 
     switch(i){
         case 0:
-            res = (*r8 & 00000001);
+            res = (*r8 & (uint8_t)00000001);
             break;
         case 1:
-            res = (*r8 & 00000010);
+            res = (*r8 & (uint8_t)00000010);
             break;
         case 2:
-            res = (*r8 & 00000100);
+            res = (*r8 & (uint8_t)00000100);
             break;
         case 3:
-            res = (*r8 & 00001000);
+            res = (*r8 & (uint8_t) 00001000);
             break;
         case 4:
-            res = (*r8 & 00010000);
+            res = (*r8 & (uint8_t)00010000);
             break;
         case 5:
-            res = (*r8 & 00100000);
+            res = (*r8 & (uint8_t)00100000);
             break;
         case 6:
-            res = (*r8 & 01000000);
+            res = (*r8 & (uint8_t)01000000);
             break;
         case 7:
-            res = (*r8 & 10000000);
+            res = (*r8 & (uint8_t)10000000);
             break;          
     }
 
@@ -1889,28 +1889,28 @@ void BIT_u3HL(struct GB_CPU* cpu, uint8_t u3){
 
     switch(i){
         case 0:
-            res = (r8 & 00000001);
+            res = (r8 & (uint8_t)00000001);
             break;
         case 1:
-            res = (r8 & 00000010);
+            res = (r8 & (uint8_t)00000010);
             break;
         case 2:
-            res = (r8 & 00000100);
+            res = (r8 & (uint8_t)00000100);
             break;
         case 3:
-            res = (r8 & 00001000);
+            res = (r8 & (uint8_t) 00001000);
             break;
         case 4:
-            res = (r8 & 00010000);
+            res = (r8 & (uint8_t)00010000);
             break;
         case 5:
-            res = (r8 & 00100000);
+            res = (r8 & (uint8_t)00100000);
             break;
         case 6:
-            res = (r8 & 01000000);
+            res = (r8 & (uint8_t)01000000);
             break;
         case 7:
-            res = (r8 & 10000000);
+            res = (r8 & (uint8_t)10000000);
             break;          
     }
 
@@ -3361,9 +3361,9 @@ void POPr16(struct GB_CPU* cpu, uint8_t* r8, uint8_t* r82){
 void PUSHAF(struct GB_CPU* cpu){
 
     DECsp;
-    LD_r8(cpu, cpu->_r.sp,cpu->_r.a);
+    LD_SPR8(cpu, cpu->_r.sp,cpu->_r.a);
     DECsp;
-    LD_r8(cpu, cpu->_r.sp, (cpu->_r.f));
+    LD_SPR8(cpu, cpu->_r.sp, (cpu->_r.f));
 
     cpu->_r.m = 4; cpu->_r.t = 16; //time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -3379,9 +3379,9 @@ void PUSHAF(struct GB_CPU* cpu){
 void PUSHr16(struct GB_CPU* cpu, uint8_t* r8, uint8_t* r82){
 
     DECsp;
-    LD_r8(cpu, cpu->_r.sp, *r82);
+    LD_SPR8(cpu, cpu->_r.sp, *r82);
     DECsp;
-    LD_r8(cpu, cpu->_r.sp, *r8);
+    LD_SPR8(cpu, cpu->_r.sp, *r8);
 
     cpu->_r.m = 4; cpu->_r.t = 16; //time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
