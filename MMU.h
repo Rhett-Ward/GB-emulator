@@ -67,4 +67,4 @@ void MMU_wb(struct MMU* mmu, uint16_t addr, uint8_t val){} // write byte
 
 void MMU_ww(struct MMU* mmu, uint16_t addr, uint8_t val){} // write word
 
-#endif MMU_H
+#endif

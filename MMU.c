@@ -88,6 +88,12 @@ bool MMU_load(struct MMU* mmu, const char* filepath){
 }
 
 uint8_t MMU_rb(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu){
+
+// The val variable is a stand in for whatever value will be passed in to be written.
+    if (addr == 0xFF02){
+        putchar(read8(0xFF01));
+    }
+
     switch (addr&0xF000)
     {
         //bios and some

@@ -74,4 +74,4 @@ struct GB_CPU {
     struct MMU mmu;
 };
 
-#endif GBCPU_H
+#endif
