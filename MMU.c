@@ -19,21 +19,16 @@ Update Log:
 /* Summary of file:
 implement functionality of mmu->h
 */
-
-#include <stdio.h> // standard in out
-#include <stdint.h> // uint8 and uint16
-#include <stdbool.h> // for access to boolean
-#include "MMU.h" // MMU outline
 #include "GB_CPU.h" // for read write
 
 void MMU_reset(struct MMU* mmu){// reset variables
 
     //clears wram
-    uint8_t* wramptr = mmu->wram[0];
+    uint8_t* wramptr = &mmu->wram[0];
     memset(wramptr, 0, 8192);
 
     //clears zram
-    uint8_t* zramptr = mmu->zram[0];
+    uint8_t* zramptr = &mmu->zram[0];
     memset(zramptr, 0, 127);
 
     mmu->inbios = 1; // sets bios to run 
@@ -88,11 +83,6 @@ bool MMU_load(struct MMU* mmu, const char* filepath){
 }
 
 uint8_t MMU_rb(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu){
-
-// The val variable is a stand in for whatever value will be passed in to be written.
-    if (addr == 0xFF02){
-        putchar(read8(0xFF01));
-    }
 
     switch (addr&0xF000)
     {
@@ -174,8 +164,8 @@ uint16_t MMU_rw(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu){
 
 void MMU_wb(struct MMU* mmu, uint16_t addr, uint8_t val){
 // The val variable is a stand in for whatever value will be passed in to be written.
-    if (addr == 0xFF02){
-        putchar(read8(0xFF01));
+    if (addr == 0xFF02) {
+    printf("%c", MMU_rb(mmu, 0xFF01, &GlobalCPU));
     }
 
     switch(addr&0xF000){

@@ -20,10 +20,13 @@ Update log:
 Outline a structure for MMU, setup structures, comment on types
 */
 
-
 #include <stdio.h> // standard in out
 #include <stdint.h> // uint8 and uint16
 #include <stdbool.h> // for access to boolean
+#include <string.h> // for memset
+#include <stdlib.h> // Malloc and Free
+
+struct GB_CPU;
 
 static const uint8_t bios[256] = {};
 
@@ -55,16 +58,16 @@ struct MMU{
     struct MBC mbc;
 };
 
-void MMU_reset(struct MMU* mmu){}// reset variables
+void MMU_reset(struct MMU* mmu);// reset variables
 
-bool MMU_load(struct MMU* mmu, const char* filepath){} // load in file
+bool MMU_load(struct MMU* mmu, const char* filepath); // load in file
 
-uint8_t MMU_rb(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu){} // Read byte
+uint8_t MMU_rb(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu); // Read byte
 
-uint16_t MMU_rw(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu){} // Read word
+uint16_t MMU_rw(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu); // Read word
 
-void MMU_wb(struct MMU* mmu, uint16_t addr, uint8_t val){} // write byte
+void MMU_wb(struct MMU* mmu, uint16_t addr, uint8_t val); // write byte
 
-void MMU_ww(struct MMU* mmu, uint16_t addr, uint8_t val){} // write word
+void MMU_ww(struct MMU* mmu, uint16_t addr, uint8_t val); // write word
 
 #endif

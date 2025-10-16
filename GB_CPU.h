@@ -12,8 +12,6 @@ Update log:
 */
 
 //Includes needed
-#include <stdio.h> // standard in out
-#include <stdint.h> // uint8 and uint16 
 #include "MMU.h" // memory manipulation unit interface
 
 //FLAGS
@@ -73,5 +71,7 @@ struct GB_CPU {
     struct GB_Clock _c;
     struct MMU mmu;
 };
+
+struct GB_CPU GlobalCPU; //CPU var that all the ops point to
 
 #endif

@@ -59,12 +59,9 @@ Gameboy CPU, this is where all the opcodes are, where the flags are defined, reg
 */
 
 //Includes needed
-#include <stdio.h> // standard in out
-#include <stdint.h> // uint8 and uint16 
-#include "MMU.h" // memory manipulation unit interface
 #include "GB_CPU.h" // blueprint for this file 
 
-struct GB_CPU GlobalCPU; //CPU var that all the ops point to
+
 
 void initialize(){ //set cpu up, kinda like turning the gameboy on
     GlobalCPU._r.a = 0;
@@ -3506,7 +3503,7 @@ void SCF(struct GB_CPU* cpu){
  */
 void ExecCbOp(struct GB_CPU* GCPU, uint16_t* pc) {
     // Read the opcode that follows the 0xCB prefix
-    uint8_t opcode = MMU_rb(&GCPU->mmu, *pc, &GCPU);
+    uint8_t opcode = MMU_rb(&GCPU->mmu, *pc, GCPU);
 
     switch (opcode) {
 
