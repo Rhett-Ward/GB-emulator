@@ -19,16 +19,22 @@ Update Log:
 /* Summary of file:
 implement functionality of mmu->h
 */
+
+#include <stdio.h> // standard in out
+#include <stdint.h> // uint8 and uint16
+#include <stdbool.h> // for access to boolean
+#include "MMU.h" // MMU outline
 #include "GB_CPU.h" // for read write
+
 
 void MMU_reset(struct MMU* mmu){// reset variables
 
     //clears wram
-    uint8_t* wramptr = &mmu->wram[0];
+    uint8_t* wramptr = mmu->wram[0];
     memset(wramptr, 0, 8192);
 
     //clears zram
-    uint8_t* zramptr = &mmu->zram[0];
+    uint8_t* zramptr = mmu->zram[0];
     memset(zramptr, 0, 127);
 
     mmu->inbios = 1; // sets bios to run 
@@ -46,12 +52,15 @@ void MMU_reset(struct MMU* mmu){// reset variables
 }
 
 bool MMU_load(struct MMU* mmu, const char* filepath){
-    
+
     //establish file stream, check to make sure it worked
     FILE* b = fopen(filepath, "rb");
     if(b == NULL){
+        printf("Failed to establish stream");
         return false;
     }
+
+    MMU_reset;
     
     //find file size, reset pointer
     fseek(b, 0, SEEK_END);
@@ -61,10 +70,12 @@ bool MMU_load(struct MMU* mmu, const char* filepath){
     //Malloc, set rom, fill rom, check for null, check for mismatch
     uint8_t* memptr = malloc(fsize); // malloc allocates memory equal to size passed in, returns a pointer to beginning of that memory
     if(memptr == NULL){
+        printf("Failed to esablish memory");
         fclose(b);
         return false; // if pointer is NULL, error out
     }
     mmu->rom = memptr; //establish rom pointer to be the beginning of the allocated memory
+    
     size_t check = fread(mmu->rom, 1, fsize, b);//load rom with the gb file and establish a check variable
     if(check != fsize || check == 0){
         fclose(b);
@@ -83,6 +94,8 @@ bool MMU_load(struct MMU* mmu, const char* filepath){
 }
 
 uint8_t MMU_rb(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu){
+
+// The val variable is a stand in for whatever value will be passed in to be written.
 
     switch (addr&0xF000)
     {
@@ -162,10 +175,11 @@ uint16_t MMU_rw(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu){
     return((uint16_t)(MMU_rb(mmu, addr, cpu) + MMU_rb(mmu,addr+1,cpu)<<8));
 }
 
-void MMU_wb(struct MMU* mmu, uint16_t addr, uint8_t val){
+void MMU_wb(struct MMU* mmu, uint16_t addr, uint8_t val, struct GB_CPU* cpu){
 // The val variable is a stand in for whatever value will be passed in to be written.
     if (addr == 0xFF02) {
-    printf("%c", MMU_rb(mmu, 0xFF01, &GlobalCPU));
+    uint8_t character = MMU_rb(mmu, 0xFF01 , cpu);
+    putchar(character);
     }
 
     switch(addr&0xF000){
@@ -306,7 +320,7 @@ void MMU_wb(struct MMU* mmu, uint16_t addr, uint8_t val){
     }
 }
 
-void MMU_ww(struct MMU* mmu, uint16_t addr, uint8_t val){
-    MMU_wb(mmu,addr,val & 255);
-    MMU_wb(mmu,addr+1,val << 8);
+void MMU_ww(struct MMU* mmu, uint16_t addr, uint8_t val, struct GB_CPU* cpu){
+    MMU_wb(mmu,addr,(val & 255), cpu);
+    MMU_wb(mmu,addr+1,(val << 8), cpu);
 }
