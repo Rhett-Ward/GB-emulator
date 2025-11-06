@@ -65,6 +65,112 @@ Gameboy CPU, this is where all the opcodes are, where the flags are defined, reg
 //Includes needed
 #include "GB_CPU.h" // blueprint for this file 
 
+FILE* register_log = NULL;
+
+#pragma region logging system
+
+/**
+ * @brief Initialize the register logging system
+ * Call this once at the start of main()
+ */
+void init_register_log(const char* filename) {
+    register_log = fopen(filename, "w");
+    if (register_log == NULL) {
+        printf("Failed to open register log file!\n");
+        return;
+    }
+    
+    // Write header
+    fprintf(register_log, "GameBoy Emulator Register Log\n");
+    fprintf(register_log, "=============================\n\n");
+    fflush(register_log);
+}
+
+/**
+ * @brief Log the current state of all registers
+ * @param cpu Pointer to the CPU
+ * @param step_number Current instruction step number
+ */
+void log_registers(struct GB_CPU* cpu, uint64_t step_number) {
+    if (register_log == NULL) return;
+    
+    // Read the current opcode and next 3 bytes for display
+    uint8_t op0 = MMU_rb(&cpu->mmu, cpu->_r.pc, cpu);
+    uint8_t op1 = MMU_rb(&cpu->mmu, cpu->_r.pc + 1, cpu);
+    uint8_t op2 = MMU_rb(&cpu->mmu, cpu->_r.pc + 2, cpu);
+    uint8_t op3 = MMU_rb(&cpu->mmu, cpu->_r.pc + 3, cpu);
+    
+    // Format: "A: 01 F: B0 B: 00 C: 13 D: 00 E: D8 H: 01 L: 4D SP: FFFE PC: 00:0100 (00 C3 13 02)"
+    fprintf(register_log, 
+            "A: %02X F: %02X B: %02X C: %02X D: %02X E: %02X H: %02X L: %02X SP: %04X PC: 00:%04X (%02X %02X %02X %02X)\n",
+            cpu->_r.a,
+            cpu->_r.f,
+            cpu->_r.b,
+            cpu->_r.c,
+            cpu->_r.d,
+            cpu->_r.e,
+            cpu->_r.h,
+            cpu->_r.l,
+            cpu->_r.sp,
+            cpu->_r.pc,
+            op0, op1, op2, op3);
+    
+    // Flush every 100 instructions to balance performance and safety
+    if (step_number % 100 == 0) {
+        fflush(register_log);
+    }
+}
+
+/**
+ * @brief Close the register log file
+ * Call this at the end of main()
+ */
+void close_register_log(void) {
+    if (register_log != NULL) {
+        fflush(register_log);
+        fclose(register_log);
+        register_log = NULL;
+        printf("Register log saved successfully.\n");
+    }
+}
+
+/* ============================================
+ * ALTERNATIVE: More detailed logging with cycle counts
+ * ============================================ */
+
+/**
+ * @brief Log registers with additional cycle information
+ */
+void log_registers_detailed(struct GB_CPU* cpu, uint64_t step_number) {
+    if (register_log == NULL) return;
+    
+    uint8_t opcode = MMU_rb(&cpu->mmu, cpu->_r.pc, cpu);
+    
+    fprintf(register_log, 
+            "Step: %llu | PC: 0x%04X | SP: 0x%04X | Op: 0x%02X\n"
+            "  A:0x%02X F:0x%02X [Z:%d N:%d H:%d C:%d]\n"
+            "  B:0x%02X C:0x%02X D:0x%02X E:0x%02X\n"
+            "  H:0x%02X L:0x%02X IME:%d\n"
+            "  Cycles: M=%d T=%d (Total M=%d T=%d)\n"
+            "---\n",
+            step_number,
+            cpu->_r.pc, cpu->_r.sp, opcode,
+            cpu->_r.a, cpu->_r.f,
+            (cpu->_r.f & Z_FLAG) ? 1 : 0,
+            (cpu->_r.f & N_FLAG) ? 1 : 0,
+            (cpu->_r.f & H_FLAG) ? 1 : 0,
+            (cpu->_r.f & C_FLAG) ? 1 : 0,
+            cpu->_r.b, cpu->_r.c, cpu->_r.d, cpu->_r.e,
+            cpu->_r.h, cpu->_r.l, cpu->_r.ime,
+            cpu->_r.m, cpu->_r.t,
+            cpu->_c.m, cpu->_c.t);
+    
+    if (step_number % 50 == 0) {
+        fflush(register_log);
+    }
+}
+
+#pragma endregion logging system
 
 
 void initialize(){ //set cpu up, kinda like turning the gameboy on
@@ -83,6 +189,8 @@ void initialize(){ //set cpu up, kinda like turning the gameboy on
 
     GlobalCPU._c.m = 0;
     GlobalCPU._c.t = 0;
+
+    MMU_reset(&GlobalCPU.mmu);
 }
 
 int pending_ei;
@@ -159,8 +267,8 @@ void LD_DE(struct GB_CPU* cpu){
  */
 void LD_HL(struct GB_CPU* cpu){
     
-    cpu->_r.h = MMU_rb(&cpu->mmu, (cpu->_r.pc+1), cpu);
-    cpu->_r.l = MMU_rb(&cpu->mmu, (cpu->_r.pc + 2), cpu);
+    cpu->_r.l = MMU_rb(&cpu->mmu, (cpu->_r.pc+1), cpu);
+    cpu->_r.h = MMU_rb(&cpu->mmu, (cpu->_r.pc + 2), cpu);
     cpu->_r.m = 3; cpu->_r.t = 12; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
     cpu->_r.pc += 3; //incrememnt past instruction and value
@@ -1518,7 +1626,7 @@ void CP_HL(struct GB_CPU* cpu){
  */
 void CP_an(struct GB_CPU* cpu){
 
-    int16_t i = 0; //temp variable
+    int8_t i = 0; //temp variable
     uint8_t b = MMU_rb(&cpu->mmu, (cpu->_r.pc +1), cpu);
 
     i = cpu->_r.a - b;
@@ -2768,9 +2876,9 @@ void SWAPHL(struct GB_CPU* cpu){
 void CALLn16(struct GB_CPU* cpu){
     uint16_t store = cpu->_r.pc + 3;
     
-    DECsp;
+    DECsp(cpu);
     LD_SPR8 (cpu, &cpu->_r.sp,store>>8);
-    DECsp;
+    DECsp(cpu);
     LD_SPR8(cpu, &cpu->_r.sp, (uint8_t)store);
 
 
@@ -2791,9 +2899,9 @@ void CALLNZ(struct GB_CPU* cpu){
     uint8_t tempf = cpu->_r.f;
     if(((tempf &= ~Z_FLAG) ==  cpu->_r.f)){
         uint16_t store = cpu->_r.pc + 3;
-        DECsp;
+        DECsp(cpu);
         LD_SPR8(cpu, &cpu->_r.sp,store>>8);
-        DECsp;
+        DECsp(cpu);
         LD_SPR8(cpu, &cpu->_r.sp, (uint8_t)store);
 
         uint16_t r16 = ( (MMU_rb(&cpu->mmu, cpu->_r.pc+2, cpu)<<8) +  MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu)); //get n16 value
@@ -2820,9 +2928,9 @@ void CALLZ(struct GB_CPU* cpu){
     uint8_t tempf = cpu->_r.f;
     if(!((tempf &= ~Z_FLAG) ==  cpu->_r.f)){
         uint16_t store = cpu->_r.pc + 3;
-        DECsp;
+        DECsp(cpu);
         LD_SPR8(cpu, &cpu->_r.sp,store>>8);
-        DECsp;
+        DECsp(cpu);
         LD_SPR8(cpu, &cpu->_r.sp, (uint8_t)store);
 
         uint16_t r16 = ( (MMU_rb(&cpu->mmu, cpu->_r.pc+2, cpu)<<8) +  MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu)); //get n16 value
@@ -2849,9 +2957,9 @@ void CALLNC(struct GB_CPU* cpu){
     uint8_t tempf = cpu->_r.f;
     if(((tempf &= ~C_FLAG) ==  cpu->_r.f)){
         uint16_t store = cpu->_r.pc + 3;
-        DECsp;
+        DECsp(cpu);
         LD_SPR8(cpu, &cpu->_r.sp,store>>8);
-        DECsp;
+        DECsp(cpu);
         LD_SPR8(cpu, &cpu->_r.sp, (uint8_t)store);
 
         uint16_t r16 = ( (MMU_rb(&cpu->mmu, cpu->_r.pc+2, cpu)<<8) +  MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu)); //get n16 value
@@ -2878,9 +2986,9 @@ void CALLC(struct GB_CPU* cpu){
     uint8_t tempf = cpu->_r.f;
     if(!((tempf &= ~C_FLAG) ==  cpu->_r.f)){
         uint16_t store = cpu->_r.pc + 3;
-        DECsp;
+        DECsp(cpu);
         LD_SPR8(cpu, &cpu->_r.sp,store>>8);
-        DECsp;
+        DECsp(cpu);
         LD_SPR8(cpu, &cpu->_r.sp, (uint8_t)store);
 
         uint16_t r16 = ( (MMU_rb(&cpu->mmu, cpu->_r.pc+2, cpu)<<8) +  MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu)); //get n16 value
@@ -3054,7 +3162,7 @@ void JRNZ(struct GB_CPU* cpu){
     uint8_t tempf = cpu->_r.f;
     if(((cpu->_r.f &= ~Z_FLAG) ==  tempf)){
             cpu->_r.f = tempf;
-            cpu->_r.pc = (cpu->_r.pc+2) + r8;
+            cpu->_r.pc += 2 + r8;
             cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
             cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
             return;
@@ -3362,9 +3470,9 @@ void POPr16(struct GB_CPU* cpu, uint8_t* r8, uint8_t* r82){
  */
 void PUSHAF(struct GB_CPU* cpu){
 
-    DECsp;
+    DECsp(cpu);
     LD_SPR8(cpu, &cpu->_r.sp,cpu->_r.a);
-    DECsp;
+    DECsp(cpu);
     LD_SPR8(cpu, &cpu->_r.sp, (cpu->_r.f));
 
     cpu->_r.m = 4; cpu->_r.t = 16; //time of last cycle
@@ -3380,9 +3488,9 @@ void PUSHAF(struct GB_CPU* cpu){
  */
 void PUSHr16(struct GB_CPU* cpu, uint8_t* r8, uint8_t* r82){
 
-    DECsp;
+    DECsp(cpu);
     LD_SPR8(cpu, &cpu->_r.sp, *r82);
-    DECsp;
+    DECsp(cpu);
     LD_SPR8(cpu, &cpu->_r.sp, *r8);
 
     cpu->_r.m = 4; cpu->_r.t = 16; //time of last cycle
@@ -3399,8 +3507,6 @@ void PUSHr16(struct GB_CPU* cpu, uint8_t* r8, uint8_t* r82){
  * @brief Function for do nothing.
  */
 void NOP(struct GB_CPU* cpu){
-    cpu->_r.m = 1; cpu->_r.t = 4; //Time of last cycle
-    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
     cpu->_r.pc += 1; //incrememnt past instruction and value
 }
 
@@ -3818,8 +3924,8 @@ void ExecCbOp(struct GB_CPU* GCPU, uint16_t* pc) {
 
 
 // Method that actually executes the op codes
-void ExecOp(struct GB_CPU* GCPU, uint16_t* pc){
-    uint8_t opcode = MMU_rb(&GCPU->mmu, *pc, GCPU);
+void ExecOp(struct GB_CPU* GCPU, uint16_t pc){
+    uint8_t opcode = MMU_rb(&GCPU->mmu, pc, GCPU);
     switch (opcode) {
         case 0x00: NOP(GCPU); break;
         case 0x01: LD_BC(GCPU); break;
@@ -4076,27 +4182,55 @@ int main(){
     pending_ei = 0;
     stop_var = 1;
 
-    MMU_load(&GlobalCPU.mmu, "cpu_instrs.gb");
+   // MMU_load(&GlobalCPU.mmu, "bootix_dmg.bin");
+    MMU_load(&GlobalCPU.mmu, "01-special.gb");
+
+    MMU_wb(&GlobalCPU.mmu,0xFF44, 0x90, &GlobalCPU);
+
+// Initialize register logging
+    init_register_log("register_log.txt");  // CSV format for easy analysis
+    // OR use: init_register_log("register_log.txt"); with log_registers_detailed
+    
+    uint64_t step_count = 0;
 
     while(stop_var){
+
+        log_registers(&GlobalCPU, step_count);
 
         if(GlobalCPU._r.pc > 70000){
             stop_var = 0;
             break;
         }
-        ExecOp(&GlobalCPU, &GlobalCPU._r.pc);
 
-        if (pending_ei) {
+        if (step_count > 10000){
+            stop_var=0;
+            break;
+        }
+
+        GlobalCPU._r.pc;
+
+        ExecOp(&GlobalCPU, GlobalCPU._r.pc);
+
+        if (pending_ei > 0) {
             pending_ei--;
 
             if (!pending_ei) {
                 GlobalCPU._r.ime = 1;
         }
     }
-
-
+        step_count++;
+        
+        // Optional: Progress indicator
+        if (step_count % 10000 == 0) {
+            printf("Executed %llu instructions...\n", step_count);
+        }
 
     }
+
+    printf("\nEmulation stopped after %llu instructions.\n", step_count);
+    
+    // Close the log file
+    close_register_log();
 
     return 1;
 }

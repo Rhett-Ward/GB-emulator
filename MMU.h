@@ -28,7 +28,7 @@ Outline a structure for MMU, setup structures, comment on types
 
 struct GB_CPU;
 
-static const uint8_t bios[256] = {
+static uint8_t bios[256] = {
     0x31, 0xFE, 0xFF, 0xAF, 0x21, 0xFF, 0x9F, 0x32, 0xCB, 0x7C, 0x20, 0xFB, 0x21, 0x26, 0xFF, 0x0E,
     0x11, 0x3E, 0x80, 0x32, 0xE2, 0x0C, 0x3E, 0xF3, 0xE2, 0x32, 0x3E, 0x77, 0x77, 0x3E, 0xFC, 0xE0,
     0x47, 0x11, 0x04, 0x01, 0x21, 0x10, 0x80, 0x1A, 0xCD, 0x95, 0x00, 0xCD, 0x96, 0x00, 0x13, 0x7B,
@@ -57,7 +57,7 @@ struct MBC{
 struct MMU{
 
     uint8_t* rom; // initilaized as a pointer, memory assigned from "malloc"
-    uint8_t* eram; // initilaized as a pointer, memory assigned from "malloc"
+    uint8_t eram[32768]; //fixed size array
     //quickly discuss why to use malloc: we use malloc bc it prevents empty mismanaged memory. It does a good job at self managing. Can be size controlled with if statements surrounding its initilaization.
 
     uint8_t wram[8192]; // fixed size array since the working ram has fixed amount of memory access
@@ -73,6 +73,9 @@ struct MMU{
     uint8_t _IF; // interupt flag flag
 
     struct MBC mbc;
+
+    char serial_buffer[65536];  // Large buffer for serial output
+    size_t serial_index;        // Current position in buffer
 };
 
 void MMU_reset(struct MMU* mmu);// reset variables

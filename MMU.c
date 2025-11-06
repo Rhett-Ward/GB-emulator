@@ -29,13 +29,16 @@ implement functionality of mmu->h
 
 void MMU_reset(struct MMU* mmu){// reset variables
 
+    mmu->serial_index = 0;
+    memset(mmu->serial_buffer, 0, sizeof(mmu->serial_buffer));
+
     //clears wram
-    uint8_t* wramptr = mmu->wram[0];
-    memset(wramptr, 0, 8192);
+    memset(mmu->wram, 0x10, 8192);
 
     //clears zram
-    uint8_t* zramptr = mmu->zram[0];
-    memset(zramptr, 0, 127);
+    memset(mmu->zram, 0x10, 127);
+
+    memset(mmu->eram, 0x10, 32768);
 
     mmu->inbios = 1; // sets bios to run 
     mmu->ie = 0; // set flag to no
@@ -53,14 +56,40 @@ void MMU_reset(struct MMU* mmu){// reset variables
 
 bool MMU_load(struct MMU* mmu, const char* filepath){
 
+    if(filepath == "bootix_dmg.bin"){
+        //establish file stream, check to make sure it worked
+        FILE* b = fopen(filepath, "rb");
+        if(b == NULL){
+            printf("Failed to establish stream");
+            return false;
+        }
+    
+        //find file size, reset pointer
+        fseek(b, 0, SEEK_END);
+        long fsize = ftell(b);
+        rewind(b);
+
+        size_t check = fread(bios, 1, fsize, b);//load rom with the gb file and establish a check variable
+        if(check != fsize || check == 0){
+            fclose(b);
+            return false;
+        }
+        //find carttype bits, load it into carttype
+        fseek(b, 0x0147, SEEK_SET);
+        mmu->carttype = fgetc(b);
+        rewind(b);
+    
+        //success, end
+        fclose(b);
+        return true;
+    }
+    else{
     //establish file stream, check to make sure it worked
     FILE* b = fopen(filepath, "rb");
     if(b == NULL){
         printf("Failed to establish stream");
         return false;
     }
-
-    MMU_reset;
     
     //find file size, reset pointer
     fseek(b, 0, SEEK_END);
@@ -75,22 +104,23 @@ bool MMU_load(struct MMU* mmu, const char* filepath){
         return false; // if pointer is NULL, error out
     }
     mmu->rom = memptr; //establish rom pointer to be the beginning of the allocated memory
-    
+
     size_t check = fread(mmu->rom, 1, fsize, b);//load rom with the gb file and establish a check variable
     if(check != fsize || check == 0){
         fclose(b);
         free(memptr);
         return false;
     }
-
+    
     //find carttype bits, load it into carttype
     fseek(b, 0x0147, SEEK_SET);
     mmu->carttype = fgetc(b);
     rewind(b);
-
+    
     //success, end
     fclose(b);
     return true;
+    }
 }
 
 uint8_t MMU_rb(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu){
@@ -102,8 +132,8 @@ uint8_t MMU_rb(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu){
         //bios and some
         case 0x0000:
             if(mmu->inbios){
-                if(addr<0x0100){ return bios[addr]; }
-                else if (cpu->_r.pc == 0x0100){ mmu->inbios = 0; return(mmu->rom[addr]);}
+                if(addr < 0x0100){ return bios[addr]; }
+                else if (cpu->_r.pc >= 0x0100){ mmu->inbios = 0; return(mmu->rom[addr]);}
                 else{
                     return(mmu->rom[addr]);
                 }
@@ -159,12 +189,19 @@ uint8_t MMU_rb(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu){
                 case 0xD00:
                     return(mmu->wram[addr&0x1FFF]);
 
-                //OAM smth smth gpu stuff im not working on yet
                 case 0xE00:
-                return 0xFF;
+                return 0x90; // Rewrite later to return GPU based addresses
 
-                //noy able to work on this yet either
                 case 0xF00:
+                    if(addr == 0xFFFF){
+                        return mmu->ie;
+                    }
+                    else if(addr > 0xFF7F){
+                        return (mmu->zram[addr&0x7F]);
+                    }
+                    else{
+                        return(addr&0xF0); // Filler for now, this will be turned into IO processing.
+                    }
                 return 0xFF;    
             }
     }
@@ -178,8 +215,15 @@ uint16_t MMU_rw(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu){
 void MMU_wb(struct MMU* mmu, uint16_t addr, uint8_t val, struct GB_CPU* cpu){
 // The val variable is a stand in for whatever value will be passed in to be written.
     if (addr == 0xFF02) {
-    uint8_t character = MMU_rb(mmu, 0xFF01 , cpu);
-    putchar(character);
+    uint8_t character = MMU_rb(mmu, 0xFF01, cpu);
+    
+    // Add to buffer if there's space
+    if (mmu->serial_index < sizeof(mmu->serial_buffer) - 1) {
+        mmu->serial_buffer[mmu->serial_index++] = character;
+    }
+    
+    putchar(character);  // Still print immediately
+    fflush(stdout);
     }
 
     switch(addr&0xF000){
