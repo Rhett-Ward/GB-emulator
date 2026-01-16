@@ -193,6 +193,10 @@ uint8_t MMU_rb(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu){
                 return 0x90; // Rewrite later to return GPU based addresses
 
                 case 0xF00:
+                    if(addr == 0xFF44){
+                        return 0x90;
+                    }
+
                     if(addr == 0xFFFF){
                         return mmu->ie;
                     }
