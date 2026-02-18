@@ -64,8 +64,7 @@ struct MMU{
     uint8_t zram[127]; //fixed size array since the zero-page ram has a fixed amount of memory access
 
     uint32_t romoffs;
-    uint32_t ramoffs;
-    //these are memory offset variables, i need to learn more about memory offset to understand their function, but we use 32bit size bc 16 is too small, we want to stick to standard sizes, and the extra space of a 32 bit is negligble performance wise
+    uint32_t ramoffs; //these are memory offset variables, i need to learn more about memory offset to understand their function, but we use 32bit size bc 16 is too small, we want to stick to standard sizes, and the extra space of a 32 bit is negligble performance wise
     
     bool inbios; // standard yes or no "am i in bios" or "am i not"
     uint8_t carttype; // 8 bit int that will clarify the type of cartridge thats being loaded

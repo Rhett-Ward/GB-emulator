@@ -63,7 +63,18 @@ Update log:
         Fixed PUSHn16
         Fixed POPn16
         Fixed POP AF
+        fixed LDH Au8
+        Fixed Call
         changed log formatting to comply with Gameboy-Doctor Log comparer
+    * 02/18/2026
+        Fixed LDr8 by fixing an issue within the MMU where ZRAM was being incorrectly accessed
+        Fixed SRL by revising to be binary literals instead of octals
+        Fixed RR by revising to be binary literals instead of octals
+        Fixed RRA by revising to be binary literals instead of octals
+        Fixed RETZ by fixing the increment SP logic. (calling opcode increment rather then self incrementing causing timing issues)
+        Fixed RET NC by fixing the increment SP logic. (same as above)
+        
+
 */
 
 
@@ -329,10 +340,9 @@ void LD_HLn(struct GB_CPU* cpu){
  * @param cpu Pointer to the cpu
  * @param r8 8 bit register value
  */
-void LD_r8HL(struct GB_CPU* cpu, uint8_t r8){
-    uint16_t r16 = MMU_rb(&cpu->mmu, ((cpu->_r.h <<8) | cpu->_r.l), cpu);
-    uint8_t ar8 = MMU_rb(&cpu->mmu, r8, cpu);
-    MMU_wb(&cpu->mmu, ar8, MMU_rb(&cpu->mmu, r16, cpu), cpu);
+void LD_r8HL(struct GB_CPU* cpu, uint8_t* r8){
+    uint16_t hl = ((uint16_t) cpu->_r.h << 8) | cpu->_r.l;
+    *r8 = MMU_rb(&cpu->mmu, hl, cpu);
 
     cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -2454,20 +2464,20 @@ void RLA(struct GB_CPU* cpu){
  * @param r8 pointer to the 8 bit register to be shifted
  */
 void RRr8(struct GB_CPU* cpu, uint8_t* r8){
-    uint8_t C = (*r8 & 00000001); // store 7th bit for carry
+    uint8_t C = (*r8 & 0b00000001); // store 7th bit for carry
     uint8_t D = (cpu->_r.f & C_FLAG);
     *r8 = *r8 >> 1; // shift all bits to the right 1
-    if(C == 00000001){ // if 0th bit was 1
+    if(C == 0b00000001){ // if 0th bit was 1
         cpu->_r.f |= C_FLAG; // turn on carry flag
-    }else if (C == 00000000){ // if 0th bit was 0
+    }else if (C == 0b00000000){ // if 0th bit was 0
         cpu->_r.f &= ~C_FLAG; // turn off carry flag
     }else{
         printf("Somethings gone wrong, somethings gone very very wrong.");
     }
     if(D == C_FLAG){
-        *r8 |= 10000000;
+        *r8 |= 0b10000000;
     }else{
-        *r8 &= 01111111;
+        *r8 &= 0b01111111;
     }
     if(*r8 == 0){
        cpu->_r.f |= Z_FLAG; 
@@ -2527,20 +2537,20 @@ void RRHL(struct GB_CPU* cpu){
  */
 void RRA(struct GB_CPU* cpu){
     uint8_t* r8 = &cpu->_r.a;
-    uint8_t C = (*r8 & 00000001); // store 0th bit for carry
+    uint8_t C = (*r8 & 0b00000001); // store 0th bit for carry
     uint8_t D = (cpu->_r.f & C_FLAG);
     *r8 = *r8 >> 1; // shift all bits to the left 1
-    if(C == 00000001){ // if 0th bit was 1
+    if(C == 0b00000001){ // if 0th bit was 1
         cpu->_r.f |= C_FLAG; // turn on carry flag
-    }else if (C == 00000000){ // if 0th bit was 0
+    }else if (C == 0b00000000){ // if 0th bit was 0
         cpu->_r.f &= ~C_FLAG; // turn off carry flag
     }else{
         printf("Somethings gone wrong, somethings gone very very wrong.");
     }
     if(D == C_FLAG){
-        *r8 |= 10000000;
+        *r8 |= 0b10000000;
     }else{
-        *r8 &= 01111111;
+        *r8 &= 0b01111111;
     }
     
     cpu->_r.f &= ~Z_FLAG;
@@ -2781,17 +2791,17 @@ void SRAHL(struct GB_CPU* cpu){
  * @param r8 pointer to the 8 bit register to be shifted
  */
 void SRLr8(struct GB_CPU* cpu, uint8_t* r8){
-    uint8_t C = (*r8 & 00000001); // store 7th bit for carry
+    uint8_t C = (*r8 & 0b00000001); // store 7th bit for carry
     *r8 = *r8 >> 1; // shift all bits to the right 1
-    if(C == 00000001){ // if 0th bit was 1
+    if(C == 0b00000001){ // if 0th bit was 1
         cpu->_r.f |= C_FLAG; // turn on carry flag
-    }else if (C == 00000000){ // if 0th bit was 0
+    }else if (C == 0b00000000){ // if 0th bit was 0
         cpu->_r.f &= ~C_FLAG; // turn off carry flag
     }else{
         printf("Somethings gone wrong, somethings gone very very wrong.");
     }
     
-    *r8 &= 01111111;
+    *r8 &= 0b01111111;
 
     if(*r8 == 0){
        cpu->_r.f |= Z_FLAG; 
@@ -3353,11 +3363,11 @@ void RETZ(struct GB_CPU* cpu){
     if(!((tempf &= ~Z_FLAG) ==  cpu->_r.f)){
 
         uint8_t temp = (MMU_rb(&cpu->mmu, cpu->_r.sp, cpu));
-        INCsp(cpu);
+        cpu->_r.sp++;
         cpu->_r.pc = MMU_rb(&cpu->mmu, cpu->_r.sp, cpu);
         cpu->_r.pc = cpu->_r.pc<<8;
         cpu->_r.pc += temp;
-        INCsp(cpu);
+        cpu->_r.sp++;
 
         cpu->_r.m = 5; cpu->_r.t = 20; //Time of last cycle
         cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -3380,11 +3390,11 @@ void RETNC(struct GB_CPU* cpu){
     if(((tempf &= ~C_FLAG) ==  cpu->_r.f)){
 
         uint8_t temp = (MMU_rb(&cpu->mmu, cpu->_r.sp, cpu));
-        INCsp(cpu);
+        cpu->_r.sp++;
         cpu->_r.pc = MMU_rb(&cpu->mmu, cpu->_r.sp, cpu);
         cpu->_r.pc = cpu->_r.pc<<8;
         cpu->_r.pc += temp;
-        INCsp(cpu);
+        cpu->_r.sp++;
 
         cpu->_r.m = 5; cpu->_r.t = 20; //Time of last cycle
         cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -4033,7 +4043,7 @@ void ExecOp(struct GB_CPU* GCPU, uint16_t pc){
         case 0x43: LD_r8(GCPU, &GCPU->_r.b, GCPU->_r.e); break;
         case 0x44: LD_r8(GCPU, &GCPU->_r.b, GCPU->_r.h); break;
         case 0x45: LD_r8(GCPU, &GCPU->_r.b, GCPU->_r.l); break;
-        case 0x46: LD_r8HL(GCPU, GCPU->_r.b); break;
+        case 0x46: LD_r8HL(GCPU, &GCPU->_r.b); break;
         case 0x47: LD_r8(GCPU, &GCPU->_r.b, GCPU->_r.a); break;
         case 0x48: LD_r8(GCPU, &GCPU->_r.c, GCPU->_r.b); break;
         case 0x49: LD_r8(GCPU, &GCPU->_r.c, GCPU->_r.c); break;
@@ -4041,7 +4051,7 @@ void ExecOp(struct GB_CPU* GCPU, uint16_t pc){
         case 0x4B: LD_r8(GCPU, &GCPU->_r.c, GCPU->_r.e); break;
         case 0x4C: LD_r8(GCPU, &GCPU->_r.c, GCPU->_r.h); break;
         case 0x4D: LD_r8(GCPU, &GCPU->_r.c, GCPU->_r.l); break;
-        case 0x4E: LD_r8HL(GCPU, GCPU->_r.c); break;
+        case 0x4E: LD_r8HL(GCPU, &GCPU->_r.c); break;
         case 0x4F: LD_r8(GCPU, &GCPU->_r.c, GCPU->_r.a); break;
         case 0x50: LD_r8(GCPU, &GCPU->_r.d, GCPU->_r.b); break;
         case 0x51: LD_r8(GCPU, &GCPU->_r.d, GCPU->_r.c); break;
@@ -4049,7 +4059,7 @@ void ExecOp(struct GB_CPU* GCPU, uint16_t pc){
         case 0x53: LD_r8(GCPU, &GCPU->_r.d, GCPU->_r.e); break;
         case 0x54: LD_r8(GCPU, &GCPU->_r.d, GCPU->_r.h); break;
         case 0x55: LD_r8(GCPU, &GCPU->_r.d, GCPU->_r.l); break;
-        case 0x56: LD_r8HL(GCPU, GCPU->_r.d); break;
+        case 0x56: LD_r8HL(GCPU, &GCPU->_r.d); break;
         case 0x57: LD_r8(GCPU, &GCPU->_r.d, GCPU->_r.a); break;
         case 0x58: LD_r8(GCPU, &GCPU->_r.e, GCPU->_r.b); break;
         case 0x59: LD_r8(GCPU, &GCPU->_r.e, GCPU->_r.c); break;
@@ -4057,7 +4067,7 @@ void ExecOp(struct GB_CPU* GCPU, uint16_t pc){
         case 0x5B: LD_r8(GCPU, &GCPU->_r.e, GCPU->_r.e); break;
         case 0x5C: LD_r8(GCPU, &GCPU->_r.e, GCPU->_r.h); break;
         case 0x5D: LD_r8(GCPU, &GCPU->_r.e, GCPU->_r.l); break;
-        case 0x5E: LD_r8HL(GCPU, GCPU->_r.e); break;
+        case 0x5E: LD_r8HL(GCPU, &GCPU->_r.e); break;
         case 0x5F: LD_r8(GCPU, &GCPU->_r.e, GCPU->_r.a); break;
         case 0x60: LD_r8(GCPU, &GCPU->_r.h, GCPU->_r.b); break;
         case 0x61: LD_r8(GCPU, &GCPU->_r.h, GCPU->_r.c); break;
@@ -4065,7 +4075,7 @@ void ExecOp(struct GB_CPU* GCPU, uint16_t pc){
         case 0x63: LD_r8(GCPU, &GCPU->_r.h, GCPU->_r.e); break;
         case 0x64: LD_r8(GCPU, &GCPU->_r.h, GCPU->_r.h); break;
         case 0x65: LD_r8(GCPU, &GCPU->_r.h, GCPU->_r.l); break;
-        case 0x66: LD_r8HL(GCPU, GCPU->_r.h); break;
+        case 0x66: LD_r8HL(GCPU, &GCPU->_r.h); break;
         case 0x67: LD_r8(GCPU, &GCPU->_r.h, GCPU->_r.a); break;
         case 0x68: LD_r8(GCPU, &GCPU->_r.l, GCPU->_r.b); break;
         case 0x69: LD_r8(GCPU, &GCPU->_r.l, GCPU->_r.c); break;
@@ -4073,7 +4083,7 @@ void ExecOp(struct GB_CPU* GCPU, uint16_t pc){
         case 0x6B: LD_r8(GCPU, &GCPU->_r.l, GCPU->_r.e); break;
         case 0x6C: LD_r8(GCPU, &GCPU->_r.l, GCPU->_r.h); break;
         case 0x6D: LD_r8(GCPU, &GCPU->_r.l, GCPU->_r.l); break;
-        case 0x6E: LD_r8HL(GCPU, GCPU->_r.l); break;
+        case 0x6E: LD_r8HL(GCPU, &GCPU->_r.l); break;
         case 0x6F: LD_r8(GCPU, &GCPU->_r.l, GCPU->_r.a); break;
         case 0x70: LD_HLr8(GCPU, GCPU->_r.b); break;
         case 0x71: LD_HLr8(GCPU, GCPU->_r.c); break;
@@ -4089,7 +4099,7 @@ void ExecOp(struct GB_CPU* GCPU, uint16_t pc){
         case 0x7B: LD_r8(GCPU, &GCPU->_r.a, GCPU->_r.e); break;
         case 0x7C: LD_r8(GCPU, &GCPU->_r.a, GCPU->_r.h); break;
         case 0x7D: LD_r8(GCPU, &GCPU->_r.a, GCPU->_r.l); break;
-        case 0x7E: LD_r8HL(GCPU, GCPU->_r.a); break;
+        case 0x7E: LD_r8HL(GCPU, &GCPU->_r.a); break;
         case 0x7F: LD_r8(GCPU, &GCPU->_r.a, GCPU->_r.a); break;
         case 0x80: ADD_ar8(GCPU, GCPU->_r.b); break;
         case 0x81: ADD_ar8(GCPU, GCPU->_r.c); break;
@@ -4252,7 +4262,7 @@ int main(){
     }
         step_count++;
 
-        if (step_count == 24589){
+        if (step_count == 50000){
             step_count = step_count;
         }
         

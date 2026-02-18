@@ -125,9 +125,11 @@ bool MMU_load(struct MMU* mmu, const char* filepath){
 
 uint8_t MMU_rb(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu){
 
+    uint16_t temp = addr;
+    uint16_t temp2 = addr;
 // The val variable is a stand in for whatever value will be passed in to be written.
 
-    switch (addr&0xF000)
+    switch (temp&0xF000)
     {
         //bios and some
         case 0x0000:
@@ -172,7 +174,7 @@ uint8_t MMU_rb(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu){
 
         //
         case 0xF000:
-            switch(addr&0x0F00){
+            switch(temp2&0x0F00){
                 case 0x000: 
                 case 0x100: 
                 case 0x200: 
@@ -200,11 +202,12 @@ uint8_t MMU_rb(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu){
                     if(addr == 0xFFFF){
                         return mmu->ie;
                     }
-                    else if(addr > 0xFF7F){
+                    else if(0xFF80 > addr > 0xFF7F){
                         return (mmu->zram[addr&0x7F]);
                     }
                     else{
-                        return(addr&0xF0); // Filler for now, this will be turned into IO processing.
+                        return 0xFF;  
+                        //return(addr&0xF0); // Filler for now, this will be turned into IO processing.
                     }
                 return 0xFF;    
             }
