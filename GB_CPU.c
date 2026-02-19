@@ -67,12 +67,13 @@ Update log:
         Fixed Call
         changed log formatting to comply with Gameboy-Doctor Log comparer
     * 02/18/2026
-        Fixed LDr8 by fixing an issue within the MMU where ZRAM was being incorrectly accessed
         Fixed SRL by revising to be binary literals instead of octals
         Fixed RR by revising to be binary literals instead of octals
         Fixed RRA by revising to be binary literals instead of octals
         Fixed RETZ by fixing the increment SP logic. (calling opcode increment rather then self incrementing causing timing issues)
         Fixed RET NC by fixing the increment SP logic. (same as above)
+        Fixed write byte zram access
+        FIRST BLARG TEST ROM COMPLETE SUCCESS ON TO ROM 2
         
 
 */
@@ -356,7 +357,7 @@ void LD_r8HL(struct GB_CPU* cpu, uint8_t* r8){
  * @param r82 8  bit register value, lower bit of r16
  */
 void LD_r16A(struct GB_CPU* cpu, uint8_t r8, uint8_t r82){
-    uint16_t r16 = ((r8<<8) + r82);
+    uint16_t r16 = (((uint16_t)r8<<8) + r82);
     MMU_wb(&cpu->mmu, r16, cpu->_r.a, cpu);
 
     cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
@@ -4229,7 +4230,7 @@ int main(){
     pending_ei = 0;
     stop_var = 1;
 
-    MMU_load(&GlobalCPU.mmu, "01-special.gb");
+    MMU_load(&GlobalCPU.mmu, "02-interrupts.gb");
     
 
     MMU_wb(&GlobalCPU.mmu,0xFF44, 0x90, &GlobalCPU);
@@ -4262,7 +4263,11 @@ int main(){
     }
         step_count++;
 
-        if (step_count == 50000){
+        if (step_count == 151346){
+            step_count = step_count;
+        }
+
+        if (step_count == 300000){
             step_count = step_count;
         }
         
@@ -4277,6 +4282,6 @@ int main(){
     
     // Close the log file
     close_register_log();
-
+    exit(1);
     return 1;
 }

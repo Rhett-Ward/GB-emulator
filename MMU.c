@@ -125,6 +125,11 @@ bool MMU_load(struct MMU* mmu, const char* filepath){
 
 uint8_t MMU_rb(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu){
 
+    if((addr&0x1FFF) == 0x2c2){
+        addr = addr;
+    }
+
+
     uint16_t temp = addr;
     uint16_t temp2 = addr;
 // The val variable is a stand in for whatever value will be passed in to be written.
@@ -199,16 +204,27 @@ uint8_t MMU_rb(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu){
                         return 0x90;
                     }
 
+                    if(0xFF7F > addr){
+                        if(addr == 0xFF00){
+                            return (addr & 0b0000000011111111);
+                        }
+                        if(0xFF01 == addr || 0xFF02 == addr){
+                            return mmu->ie;
+                        }
+                        if(0xFF0F == addr){
+                            return mmu->_IF;
+                        }
+
+                    }
+
                     if(addr == 0xFFFF){
                         return mmu->ie;
                     }
-                    else if(0xFF80 > addr > 0xFF7F){
+
+                    if(0xFFFF > addr && addr > 0xFF7F){
                         return (mmu->zram[addr&0x7F]);
                     }
-                    else{
-                        return 0xFF;  
-                        //return(addr&0xF0); // Filler for now, this will be turned into IO processing.
-                    }
+
                 return 0xFF;    
             }
     }
@@ -364,6 +380,9 @@ void MMU_wb(struct MMU* mmu, uint16_t addr, uint8_t val, struct GB_CPU* cpu){
 
                 //Zeropage, I/O, Interupts
                 case 0xF00:
+                    if(0xFFFF > addr && addr > 0xFF7F){
+                        mmu->zram[addr&0x7F] = val;
+                    }
                     // no IO implemnentation yet
                     break;
 
