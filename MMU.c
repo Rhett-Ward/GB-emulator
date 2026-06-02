@@ -19,17 +19,26 @@ Update Log:
 /* Summary of file:
 implement functionality of mmu->h
 */
+
+#include <stdio.h> // standard in out
+#include <stdint.h> // uint8 and uint16
+#include <stdbool.h> // for access to boolean
+#include "MMU.h" // MMU outline
 #include "GB_CPU.h" // for read write
+
 
 void MMU_reset(struct MMU* mmu){// reset variables
 
+    mmu->serial_index = 0;
+    memset(mmu->serial_buffer, 0, sizeof(mmu->serial_buffer));
+
     //clears wram
-    uint8_t* wramptr = &mmu->wram[0];
-    memset(wramptr, 0, 8192);
+    memset(mmu->wram, 0x10, 8192);
 
     //clears zram
-    uint8_t* zramptr = &mmu->zram[0];
-    memset(zramptr, 0, 127);
+    memset(mmu->zram, 0x10, 127);
+
+    memset(mmu->eram, 0x10, 32768);
 
     mmu->inbios = 1; // sets bios to run 
     mmu->ie = 0; // set flag to no
@@ -46,10 +55,39 @@ void MMU_reset(struct MMU* mmu){// reset variables
 }
 
 bool MMU_load(struct MMU* mmu, const char* filepath){
+
+    if(filepath == "bootix_dmg.bin"){
+        //establish file stream, check to make sure it worked
+        FILE* b = fopen(filepath, "rb");
+        if(b == NULL){
+            printf("Failed to establish stream");
+            return false;
+        }
     
+        //find file size, reset pointer
+        fseek(b, 0, SEEK_END);
+        long fsize = ftell(b);
+        rewind(b);
+
+        size_t check = fread(bios, 1, fsize, b);//load rom with the gb file and establish a check variable
+        if(check != fsize || check == 0){
+            fclose(b);
+            return false;
+        }
+        //find carttype bits, load it into carttype
+        fseek(b, 0x0147, SEEK_SET);
+        mmu->carttype = fgetc(b);
+        rewind(b);
+    
+        //success, end
+        fclose(b);
+        return true;
+    }
+    else{
     //establish file stream, check to make sure it worked
     FILE* b = fopen(filepath, "rb");
     if(b == NULL){
+        printf("Failed to establish stream");
         return false;
     }
     
@@ -61,36 +99,48 @@ bool MMU_load(struct MMU* mmu, const char* filepath){
     //Malloc, set rom, fill rom, check for null, check for mismatch
     uint8_t* memptr = malloc(fsize); // malloc allocates memory equal to size passed in, returns a pointer to beginning of that memory
     if(memptr == NULL){
+        printf("Failed to esablish memory");
         fclose(b);
         return false; // if pointer is NULL, error out
     }
     mmu->rom = memptr; //establish rom pointer to be the beginning of the allocated memory
+
     size_t check = fread(mmu->rom, 1, fsize, b);//load rom with the gb file and establish a check variable
     if(check != fsize || check == 0){
         fclose(b);
         free(memptr);
         return false;
     }
-
+    
     //find carttype bits, load it into carttype
     fseek(b, 0x0147, SEEK_SET);
     mmu->carttype = fgetc(b);
     rewind(b);
-
+    
     //success, end
     fclose(b);
     return true;
+    }
 }
 
 uint8_t MMU_rb(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu){
 
-    switch (addr&0xF000)
+    if((addr&0x1FFF) == 0x2c2){
+        addr = addr;
+    }
+
+
+    uint16_t temp = addr;
+    uint16_t temp2 = addr;
+// The val variable is a stand in for whatever value will be passed in to be written.
+
+    switch (temp&0xF000)
     {
         //bios and some
         case 0x0000:
             if(mmu->inbios){
-                if(addr<0x0100){ return bios[addr]; }
-                else if (cpu->_r.pc == 0x0100){ mmu->inbios = 0; return(mmu->rom[addr]);}
+                if(addr < 0x0100){ return bios[addr]; }
+                else if (cpu->_r.pc >= 0x0100){ mmu->inbios = 0; return(mmu->rom[addr]);}
                 else{
                     return(mmu->rom[addr]);
                 }
@@ -129,7 +179,7 @@ uint8_t MMU_rb(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu){
 
         //
         case 0xF000:
-            switch(addr&0x0F00){
+            switch(temp2&0x0F00){
                 case 0x000: 
                 case 0x100: 
                 case 0x200: 
@@ -146,12 +196,35 @@ uint8_t MMU_rb(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu){
                 case 0xD00:
                     return(mmu->wram[addr&0x1FFF]);
 
-                //OAM smth smth gpu stuff im not working on yet
                 case 0xE00:
-                return 0xFF;
+                return 0x90; // Rewrite later to return GPU based addresses
 
-                //noy able to work on this yet either
                 case 0xF00:
+                    if(addr == 0xFF44){
+                        return 0x90;
+                    }
+
+                    if(0xFF7F > addr){
+                        if(addr == 0xFF00){
+                            return (addr & 0b0000000011111111);
+                        }
+                        if(0xFF01 == addr || 0xFF02 == addr){
+                            return mmu->ie;
+                        }
+                        if(0xFF0F == addr){
+                            return mmu->_IF;
+                        }
+
+                    }
+
+                    if(addr == 0xFFFF){
+                        return mmu->ie;
+                    }
+
+                    if(0xFFFF > addr && addr > 0xFF7F){
+                        return (mmu->zram[addr&0x7F]);
+                    }
+
                 return 0xFF;    
             }
     }
@@ -162,10 +235,18 @@ uint16_t MMU_rw(struct MMU* mmu, uint16_t addr, struct GB_CPU* cpu){
     return((uint16_t)(MMU_rb(mmu, addr, cpu) + MMU_rb(mmu,addr+1,cpu)<<8));
 }
 
-void MMU_wb(struct MMU* mmu, uint16_t addr, uint8_t val){
+void MMU_wb(struct MMU* mmu, uint16_t addr, uint8_t val, struct GB_CPU* cpu){
 // The val variable is a stand in for whatever value will be passed in to be written.
     if (addr == 0xFF02) {
-    printf("%c", MMU_rb(mmu, 0xFF01, &GlobalCPU));
+    uint8_t character = MMU_rb(mmu, 0xFF01, cpu);
+    
+    // Add to buffer if there's space
+    if (mmu->serial_index < sizeof(mmu->serial_buffer) - 1) {
+        mmu->serial_buffer[mmu->serial_index++] = character;
+    }
+    
+    putchar(character);  // Still print immediately
+    fflush(stdout);
     }
 
     switch(addr&0xF000){
@@ -299,6 +380,9 @@ void MMU_wb(struct MMU* mmu, uint16_t addr, uint8_t val){
 
                 //Zeropage, I/O, Interupts
                 case 0xF00:
+                    if(0xFFFF > addr && addr > 0xFF7F){
+                        mmu->zram[addr&0x7F] = val;
+                    }
                     // no IO implemnentation yet
                     break;
 
@@ -306,7 +390,7 @@ void MMU_wb(struct MMU* mmu, uint16_t addr, uint8_t val){
     }
 }
 
-void MMU_ww(struct MMU* mmu, uint16_t addr, uint8_t val){
-    MMU_wb(mmu,addr,val & 255);
-    MMU_wb(mmu,addr+1,val << 8);
+void MMU_ww(struct MMU* mmu, uint16_t addr, uint8_t val, struct GB_CPU* cpu){
+    MMU_wb(mmu,addr,(val & 255), cpu);
+    MMU_wb(mmu,addr+1,(val << 8), cpu);
 }

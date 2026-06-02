@@ -1,3 +1,5 @@
+#pragma region update log out of date
+
 /*
 Start date: 06/23/2025
 Last updated: 07/10/2025
@@ -51,6 +53,29 @@ Update log:
         All Bit shift op codes
         Finished Jumps excluding RETI and RST vec
         Started switch statement that actually allows the cpu to run
+    *lots of stuff happened since this last update, all commented into git commits.
+    * 1/15/2026
+        Fixed BIT_u3r8
+        Fixed BIT_u3[HL]
+        Fixed CALLn16
+        Fixed LDn16
+        Fixed RET
+        Fixed PUSHn16
+        Fixed POPn16
+        Fixed POP AF
+        fixed LDH Au8
+        Fixed Call
+        changed log formatting to comply with Gameboy-Doctor Log comparer
+    * 02/18/2026
+        Fixed SRL by revising to be binary literals instead of octals
+        Fixed RR by revising to be binary literals instead of octals
+        Fixed RRA by revising to be binary literals instead of octals
+        Fixed RETZ by fixing the increment SP logic. (calling opcode increment rather then self incrementing causing timing issues)
+        Fixed RET NC by fixing the increment SP logic. (same as above)
+        Fixed write byte zram access
+        FIRST BLARG TEST ROM COMPLETE SUCCESS ON TO ROM 2
+        
+
 */
 
 
@@ -58,9 +83,115 @@ Update log:
 Gameboy CPU, this is where all the opcodes are, where the flags are defined, registers, cpu clock, etc
 */
 
+#pragma endregion
+
 //Includes needed
 #include "GB_CPU.h" // blueprint for this file 
 
+FILE* register_log = NULL;
+
+#pragma region logging system
+
+/**
+ * @brief Initialize the register logging system
+ * Call this once at the start of main()
+ */
+void init_register_log(const char* filename) {
+    register_log = fopen(filename, "w");
+    if (register_log == NULL) {
+        printf("Failed to open register log file!\n");
+        return;
+    }
+    
+    // Write header
+    fflush(register_log);
+}
+
+/**
+ * @brief Log the current state of all registers
+ * @param cpu Pointer to the CPU
+ * @param step_number Current instruction step number
+ */
+void log_registers(struct GB_CPU* cpu, uint64_t step_number) {
+    if (register_log == NULL) return;
+    
+    // Read the current opcode and next 3 bytes for display
+    uint8_t op0 = MMU_rb(&cpu->mmu, cpu->_r.pc, cpu);
+    uint8_t op1 = MMU_rb(&cpu->mmu, cpu->_r.pc + 1, cpu);
+    uint8_t op2 = MMU_rb(&cpu->mmu, cpu->_r.pc + 2, cpu);
+    uint8_t op3 = MMU_rb(&cpu->mmu, cpu->_r.pc + 3, cpu);
+    
+    // Format: "A: 01 F: B0 B: 00 C: 13 D: 00 E: D8 H: 01 L: 4D SP: FFFE PC: 00:0100 (00 C3 13 02)"
+    fprintf(register_log, 
+            "A:%02X F:%02X B:%02X C:%02X D:%02X E:%02X H:%02X L:%02X SP:%04X PC:%04X PCMEM:%02X,%02X,%02X,%02X\n",
+            cpu->_r.a,
+            cpu->_r.f,
+            cpu->_r.b,
+            cpu->_r.c,
+            cpu->_r.d,
+            cpu->_r.e,
+            cpu->_r.h,
+            cpu->_r.l,
+            cpu->_r.sp,
+            cpu->_r.pc,
+            op0, op1, op2, op3);
+    
+    // Flush every 100 instructions to balance performance and safety
+    if (step_number % 100 == 0) {
+        fflush(register_log);
+    }
+}
+
+/**
+ * @brief Close the register log file
+ * Call this at the end of main()
+ */
+void close_register_log(void) {
+    if (register_log != NULL) {
+        fflush(register_log);
+        fclose(register_log);
+        register_log = NULL;
+        printf("Register log saved successfully.\n");
+    }
+}
+
+/* ============================================
+ * ALTERNATIVE: More detailed logging with cycle counts
+ * ============================================ */
+
+/**
+ * @brief Log registers with additional cycle information
+ */
+void log_registers_detailed(struct GB_CPU* cpu, uint64_t step_number) {
+    if (register_log == NULL) return;
+    
+    uint8_t opcode = MMU_rb(&cpu->mmu, cpu->_r.pc, cpu);
+    
+    fprintf(register_log, 
+            "Step: %llu | PC: 0x%04X | SP: 0x%04X | Op: 0x%02X\n"
+            "  A:0x%02X F:0x%02X [Z:%d N:%d H:%d C:%d]\n"
+            "  B:0x%02X C:0x%02X D:0x%02X E:0x%02X\n"
+            "  H:0x%02X L:0x%02X IME:%d\n"
+            "  Cycles: M=%d T=%d (Total M=%d T=%d)\n"
+            "---\n",
+            step_number,
+            cpu->_r.pc, cpu->_r.sp, opcode,
+            cpu->_r.a, cpu->_r.f,
+            (cpu->_r.f & Z_FLAG) ? 1 : 0,
+            (cpu->_r.f & N_FLAG) ? 1 : 0,
+            (cpu->_r.f & H_FLAG) ? 1 : 0,
+            (cpu->_r.f & C_FLAG) ? 1 : 0,
+            cpu->_r.b, cpu->_r.c, cpu->_r.d, cpu->_r.e,
+            cpu->_r.h, cpu->_r.l, cpu->_r.ime,
+            cpu->_r.m, cpu->_r.t,
+            cpu->_c.m, cpu->_c.t);
+    
+    if (step_number % 50 == 0) {
+        fflush(register_log);
+    }
+}
+
+#pragma endregion logging system
 
 
 void initialize(){ //set cpu up, kinda like turning the gameboy on
@@ -79,6 +210,23 @@ void initialize(){ //set cpu up, kinda like turning the gameboy on
 
     GlobalCPU._c.m = 0;
     GlobalCPU._c.t = 0;
+
+    MMU_reset(&GlobalCPU.mmu);
+}
+
+void BootSkipInit(){ // init cpu values to what they should be after exiting the boot rom
+    GlobalCPU._r.a = 0x01;
+    GlobalCPU._r.b = 0x00;
+    GlobalCPU._r.c = 0x13;
+    GlobalCPU._r.d = 0x00;
+    GlobalCPU._r.e = 0xD8;
+    GlobalCPU._r.f = 0xB0;
+    GlobalCPU._r.h = 0x01;
+    GlobalCPU._r.l = 0x4D;
+
+    GlobalCPU._r.pc = 0x0100;
+    GlobalCPU._r.sp = 0xFFFE;
+    GlobalCPU._r.ime = 0;
 }
 
 int pending_ei;
@@ -141,8 +289,8 @@ void LD_BC(struct GB_CPU* cpu){
  */
 void LD_DE(struct GB_CPU* cpu){
     
-    cpu->_r.d = MMU_rb(&cpu->mmu, (cpu->_r.pc+1), cpu);
-    cpu->_r.e = MMU_rb(&cpu->mmu, (cpu->_r.pc + 2), cpu);
+    cpu->_r.e = MMU_rb(&cpu->mmu, (cpu->_r.pc+1), cpu);
+    cpu->_r.d = MMU_rb(&cpu->mmu, (cpu->_r.pc + 2), cpu);
     cpu->_r.m = 3; cpu->_r.t = 12; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
     cpu->_r.pc += 3; //incrememnt past instruction and value
@@ -155,8 +303,8 @@ void LD_DE(struct GB_CPU* cpu){
  */
 void LD_HL(struct GB_CPU* cpu){
     
-    cpu->_r.h = MMU_rb(&cpu->mmu, (cpu->_r.pc+1), cpu);
-    cpu->_r.l = MMU_rb(&cpu->mmu, (cpu->_r.pc + 2), cpu);
+    cpu->_r.l = MMU_rb(&cpu->mmu, (cpu->_r.pc+1), cpu);
+    cpu->_r.h = MMU_rb(&cpu->mmu, (cpu->_r.pc + 2), cpu);
     cpu->_r.m = 3; cpu->_r.t = 12; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
     cpu->_r.pc += 3; //incrememnt past instruction and value
@@ -169,7 +317,7 @@ void LD_HL(struct GB_CPU* cpu){
  * @param r8 8 bit register value
  */
 void LD_HLr8(struct GB_CPU* cpu, uint8_t r8){
-    MMU_wb(&cpu->mmu, ((cpu->_r.h<<8) + cpu->_r.l), r8);
+    MMU_wb(&cpu->mmu, ((cpu->_r.h<<8) + cpu->_r.l), r8, cpu);
 
     cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -181,7 +329,7 @@ void LD_HLr8(struct GB_CPU* cpu, uint8_t r8){
  * @param cpu Pointer to the cpu
  */
 void LD_HLn(struct GB_CPU* cpu){
-    MMU_wb(&cpu->mmu, ((cpu->_r.h<<8) + cpu->_r.l), MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu));
+    MMU_wb(&cpu->mmu, ((cpu->_r.h<<8) + cpu->_r.l), MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu), cpu);
 
     cpu->_r.m = 3; cpu->_r.t = 12; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -193,8 +341,9 @@ void LD_HLn(struct GB_CPU* cpu){
  * @param cpu Pointer to the cpu
  * @param r8 8 bit register value
  */
-void LD_r8HL(struct GB_CPU* cpu, uint8_t r8){
-    MMU_wb(&cpu->mmu, r8, ((cpu->_r.h<<8) + cpu->_r.l));
+void LD_r8HL(struct GB_CPU* cpu, uint8_t* r8){
+    uint16_t hl = ((uint16_t) cpu->_r.h << 8) | cpu->_r.l;
+    *r8 = MMU_rb(&cpu->mmu, hl, cpu);
 
     cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -208,8 +357,8 @@ void LD_r8HL(struct GB_CPU* cpu, uint8_t r8){
  * @param r82 8  bit register value, lower bit of r16
  */
 void LD_r16A(struct GB_CPU* cpu, uint8_t r8, uint8_t r82){
-    uint16_t r16 = ((r8<<8) + r82);
-    MMU_wb(&cpu->mmu, r16, cpu->_r.a);
+    uint16_t r16 = (((uint16_t)r8<<8) + r82);
+    MMU_wb(&cpu->mmu, r16, cpu->_r.a, cpu);
 
     cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -217,14 +366,14 @@ void LD_r16A(struct GB_CPU* cpu, uint8_t r8, uint8_t r82){
 }
 
 /**
- * @brief copy the value pointed to by r16 (r8 +r82) into register A AKA:LD(r16, A)
+ * @brief copy the value pointed to by r16 (r8 +r82) into register A AKA:LD(A, r16)
  * @param cpu Pointer to the cpu
  * @param r8 8 bit register value, upper bit of r16
  * @param r82 8  bit register value, lower bit of r16
  */
 void LD_Ar16(struct GB_CPU* cpu, uint8_t r8, uint8_t r82){
-    uint8_t r16 = MMU_rb(&cpu->mmu, ((r8<<8) + r82), cpu);
-    MMU_wb(&cpu->mmu,cpu->_r.a, r16);
+    uint16_t r16 = (r8 << 8) | r82;
+    cpu->_r.a = MMU_rb(&cpu->mmu, r16, cpu);
 
     cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -237,7 +386,20 @@ void LD_Ar16(struct GB_CPU* cpu, uint8_t r8, uint8_t r82){
  */
 void LD_n16A(struct GB_CPU* cpu){
     uint16_t r16 = ( (MMU_rb(&cpu->mmu, cpu->_r.pc+2, cpu)<<8) +  MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu));
-    MMU_wb(&cpu->mmu, r16, cpu->_r.a);
+    MMU_wb(&cpu->mmu, r16, cpu->_r.a, cpu);
+
+    cpu->_r.m = 4; cpu->_r.t = 16; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc += 3; //incrememnt past instruction and value
+}
+
+/**
+ * @brief copy the value in u16 into register A 
+ * @param cpu Pointer to the cpu
+ */
+void LD_Au16(struct GB_CPU* cpu){
+    uint16_t r16 = ( (MMU_rb(&cpu->mmu, cpu->_r.pc+2, cpu)<<8) +  MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu));
+    cpu->_r.a = MMU_rb(&cpu->mmu, r16, cpu);
 
     cpu->_r.m = 4; cpu->_r.t = 16; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -252,7 +414,7 @@ void LDH_n16A(struct GB_CPU* cpu){
     uint16_t r16 = ( 0xFF00 +  MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu));
 
     if(r16 >= 0xFF00 && r16 <= 0xFFFF){
-        MMU_wb(&cpu->mmu, r16, cpu->_r.a);
+        MMU_wb(&cpu->mmu, r16, cpu->_r.a, cpu);
     }
 
     cpu->_r.m = 3; cpu->_r.t = 12; //Time of last cycle
@@ -261,57 +423,55 @@ void LDH_n16A(struct GB_CPU* cpu){
 }
 
 /**
- * @brief copy the value read from n16 into register A given its between 0xFF00 and 0xFFFF AKA:LDH(A, n16)
- * @param cpu Pointer to the cpu
- */
-void LDH_An16(struct GB_CPU* cpu){
-    uint16_t r16 = ( 0xFF00 +  MMU_rb(&cpu->mmu, (((cpu->_r.pc+1)<<8) + (cpu->_r.pc+2)), cpu));
-
-    if(r16 >= 0xFF00 && r16 <= 0xFFFF){
-        MMU_wb(&cpu->mmu, cpu->_r.a, r16);
-    }
-
-    cpu->_r.m = 3; cpu->_r.t = 12; //Time of last cycle
-    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
-    cpu->_r.pc += 3; //incrememnt past instruction and value
-}
-
-/**
  * @brief Copy the value at register A into $FF00 + C  AKA:LDH(C,A)
  * @param cpu Pointer to the cpu
  */
-void LDHC (struct GB_CPU* cpu){
-    MMU_wb(&cpu->mmu, cpu->_r.c + 0xFF00, cpu->_r.a);
+void LDHCA (struct GB_CPU* cpu){
+    MMU_wb(&cpu->mmu, (cpu->_r.c + 0xFF00), cpu->_r.a, cpu);
 
     cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
     cpu->_r.pc += 1; //incrememnt past instruction and value
-}
-
-/**
- * @brief Copy the value at register A into $FF00 + C  AKA:LDH(C,A)
- * @param cpu Pointer to the cpu
- */
-void LDHCu8 (struct GB_CPU* cpu){
-    uint8_t u8 = MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu);
-    MMU_wb(&cpu->mmu, u8 + 0xFF00, cpu->_r.a);
-
-    cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
-    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
-    cpu->_r.pc += 2; //incrememnt past instruction and value
 }
 
 /**
  * @brief Copy the value at $FF00 + C into register A AKA:LDH(A,C)
  * @param cpu Pointer to the cpu
  */
-void LDHAC (struct GB_CPU* cpu){
-    MMU_wb(&cpu->mmu, cpu->_r.a, cpu->_r.c + 0xFF00);
+void LDHAC(struct GB_CPU* cpu){
+    MMU_wb(&cpu->mmu, cpu->_r.a, (cpu->_r.c + 0xFF00), cpu);
 
     cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
     cpu->_r.pc += 1; //incrememnt past instruction and value
 }
+
+/**
+ * @brief Copy the value at register A into $FF00 + u8
+ * @param cpu Pointer to the cpu
+ */
+void LDHu8A(struct GB_CPU* cpu){
+    uint8_t u8 = MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu);
+    MMU_wb(&cpu->mmu, (u8+0xFF00), cpu->_r.a, cpu);
+
+    cpu->_r.m = 3; cpu->_r.t = 12; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc += 2; //incrememnt past instruction and value
+}
+
+/**
+ * @brief Copy the value at $FF00 + u8 into register A 
+ * @param cpu Pointer to the cpu
+ */
+void LDHAu8(struct GB_CPU* cpu){
+    uint8_t u8 = MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu);
+    cpu->_r.a = MMU_rb(&cpu->mmu, (u8+0xFF00), cpu);
+
+    cpu->_r.m = 3; cpu->_r.t = 12; //Time of last cycle
+    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
+    cpu->_r.pc += 2; //incrememnt past instruction and value
+}
+
 
 /**
  * @brief copy the value held in the register A into the address pointed to by HL then increment HL AKA LD(HLI,A)
@@ -321,7 +481,7 @@ void LD_HLIA(struct GB_CPU* cpu){
 
     uint16_t r16 = ((cpu->_r.h<<8) + cpu->_r.l); // get the byte pointer held by HL
 
-    MMU_wb(&cpu->mmu, r16, cpu->_r.a); // write A to that byte
+    MMU_wb(&cpu->mmu, r16, cpu->_r.a, cpu); // write A to that byte
     r16++; // Increment HL
 
     cpu->_r.h = (r16>>8) & 255; // store High byte in h 
@@ -340,7 +500,7 @@ void LD_HLDA(struct GB_CPU* cpu){
 
     uint16_t r16 = ((cpu->_r.h<<8) + cpu->_r.l); // get the byte pointer held by HL
 
-    MMU_wb(&cpu->mmu, r16, cpu->_r.a); // write A to that byte
+    MMU_wb(&cpu->mmu, r16, cpu->_r.a, cpu); // write A to that byte
     r16--; // Increment HL
 
     cpu->_r.h = (r16>>8) & 255; // store High byte in h 
@@ -411,8 +571,8 @@ void LD_SPn16(struct GB_CPU* cpu){
 void LD_n16SP(struct GB_CPU* cpu){
 
     uint16_t r16 = ( (MMU_rb(&cpu->mmu, cpu->_r.pc+2, cpu)<<8) +  MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu));
-    MMU_wb(&cpu->mmu, (r16+1), cpu->_r.sp >> 8);
-    MMU_wb(&cpu->mmu, r16, (cpu->_r.sp & 0xFF));
+    MMU_wb(&cpu->mmu, (r16+1), cpu->_r.sp >> 8, cpu);
+    MMU_wb(&cpu->mmu, r16, (cpu->_r.sp & 0xFF), cpu);
 
     cpu->_r.m = 5; cpu->_r.t = 20; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -425,7 +585,7 @@ void LD_n16SP(struct GB_CPU* cpu){
  */
 void LD_SPR8(struct GB_CPU* cpu, uint16_t* sp, uint8_t r8){
 
-    MMU_wb(&cpu->mmu, *sp, r8);
+    MMU_wb(&cpu->mmu, *sp, r8, cpu);
 
     cpu->_r.m = 5; cpu->_r.t = 20; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -1285,7 +1445,7 @@ void DECr8(struct GB_CPU* cpu, uint8_t* r8){
 void DECHL(struct GB_CPU* cpu){
     uint8_t b = (MMU_rb(&cpu->mmu, ((cpu->_r.h<<8) + cpu->_r.l), cpu)); // assign uint8_t b the value read out of memory at 16 bit address created by high bit h and low bit l
     b--;
-    MMU_wb(&cpu->mmu,((cpu->_r.h<<8) + cpu->_r.l), b);
+    MMU_wb(&cpu->mmu,((cpu->_r.h<<8) + cpu->_r.l), b, cpu);
 
     if(b == 0){
         cpu->_r.f |= Z_FLAG;
@@ -1372,7 +1532,7 @@ void INCHL(struct GB_CPU* cpu){
 
     uint8_t b = (MMU_rb(&cpu->mmu, ((cpu->_r.h<<8) + cpu->_r.l), cpu));// assign uint8_t b the value read out of memory at 16 bit address created by high bit h and low bit l
     b++;
-    MMU_wb(&cpu->mmu,((cpu->_r.h<<8) + cpu->_r.l), b);
+    MMU_wb(&cpu->mmu,((cpu->_r.h<<8) + cpu->_r.l), b, cpu);
 
     cpu->_r.f &= ~N_FLAG;
 
@@ -1514,7 +1674,7 @@ void CP_HL(struct GB_CPU* cpu){
  */
 void CP_an(struct GB_CPU* cpu){
 
-    int16_t i = 0; //temp variable
+    int8_t i = 0; //temp variable
     uint8_t b = MMU_rb(&cpu->mmu, (cpu->_r.pc +1), cpu);
 
     i = cpu->_r.a - b;
@@ -1828,34 +1988,34 @@ void CPL(struct GB_CPU* cpu){
  * @param r8 8 bit register pointer
  */
 void BIT_u3r8(struct GB_CPU* cpu, uint8_t u3, uint8_t* r8){
-    uint8_t i = (u3 &= 00000111);
+    uint8_t i = (u3 & 0x07);
 
     uint8_t res;
 
     switch(i){
         case 0:
-            res = (*r8 & (uint8_t)00000001);
+            res = (*r8 & 0x01);
             break;
         case 1:
-            res = (*r8 & (uint8_t)00000010);
+            res = (*r8 & 0x02);
             break;
         case 2:
-            res = (*r8 & (uint8_t)00000100);
+            res = (*r8 & 0x04);
             break;
         case 3:
-            res = (*r8 & (uint8_t) 00001000);
+            res = (*r8 & 0x08);
             break;
         case 4:
-            res = (*r8 & (uint8_t)00010000);
+            res = (*r8 & 0x10);
             break;
         case 5:
-            res = (*r8 & (uint8_t)00100000);
+            res = (*r8 & 0x20);
             break;
         case 6:
-            res = (*r8 & (uint8_t)01000000);
+            res = (*r8 & 0x40);
             break;
         case 7:
-            res = (*r8 & (uint8_t)10000000);
+            res = (*r8 & 0x80);
             break;          
     }
 
@@ -1879,35 +2039,35 @@ void BIT_u3r8(struct GB_CPU* cpu, uint8_t u3, uint8_t* r8){
  * @param u3 3bit that says which bit to test
  */
 void BIT_u3HL(struct GB_CPU* cpu, uint8_t u3){
-    uint8_t i = (u3 &= 00000111);
+    uint8_t i = (u3 & 0x07);
 
     uint8_t r8 = MMU_rb(&cpu->mmu,((cpu->_r.h << 8) + cpu->_r.l),cpu);
     uint8_t res;
 
     switch(i){
         case 0:
-            res = (r8 & (uint8_t)00000001);
+            res = (r8 & 0x01);
             break;
         case 1:
-            res = (r8 & (uint8_t)00000010);
+            res = (r8 & 0x02);
             break;
         case 2:
-            res = (r8 & (uint8_t)00000100);
+            res = (r8 & 0x04);
             break;
         case 3:
-            res = (r8 & (uint8_t) 00001000);
+            res = (r8 & 0x08);
             break;
         case 4:
-            res = (r8 & (uint8_t)00010000);
+            res = (r8 & 0x10);
             break;
         case 5:
-            res = (r8 & (uint8_t)00100000);
+            res = (r8 & 0x20);
             break;
         case 6:
-            res = (r8 & (uint8_t)01000000);
+            res = (r8 & 0x40);
             break;
         case 7:
-            res = (r8 & (uint8_t)10000000);
+            res = (r8 & 0x80);
             break;          
     }
 
@@ -1962,7 +2122,7 @@ void RES_u3HL(struct GB_CPU* cpu, uint8_t u3){
             break;          
     }
 
-    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), r8);
+    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), r8, cpu);
 
     cpu->_r.m = 4; cpu->_r.t = 16; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -2005,7 +2165,7 @@ void RES_u3r8(struct GB_CPU* cpu, uint8_t u3, uint8_t* r8){
             break;          
     }
 
-    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), *r8);
+    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), *r8, cpu);
 
     cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -2019,36 +2179,36 @@ void RES_u3r8(struct GB_CPU* cpu, uint8_t u3, uint8_t* r8){
  * @param r8 8bit register pointer
  */
 void SET_u3r8(struct GB_CPU* cpu, uint8_t u3, uint8_t* r8){
-    uint8_t i = (u3 &= 00000111);
+    uint8_t i = (u3 & 0x07);
 
     switch(i){
         case 0:
-            *r8 |= 00000001;
+            *r8 |= 0x01;
             break;
         case 1:
-            *r8 |= 00000010;
+            *r8 |= 0x02;
             break;
         case 2:
-            *r8 |= 00000100;
+            *r8 |= 0x04;
             break;
         case 3:
-            *r8 |= 00001000;
+            *r8 |= 0x08;
             break;
         case 4:
-            *r8 |= 00010000;
+            *r8 |= 0x10;
             break;
         case 5:
-            *r8 |= 00100000;
+            *r8 |= 0x20;
             break;
         case 6:
-            *r8 |= 01000000;
+            *r8 |= 0x40;
             break;
         case 7:
-            *r8 |= 10000000;
+            *r8 |= 0x80;
             break;          
     }
 
-    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), *r8);
+    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), *r8, cpu);
 
     cpu->_r.m = 2; cpu->_r.t = 8; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -2092,7 +2252,7 @@ void SET_u3HL(struct GB_CPU* cpu, uint8_t u3){
             break;          
     }
 
-    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), r8);
+    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), r8, cpu);
 
     cpu->_r.m = 4; cpu->_r.t = 16; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -2160,7 +2320,7 @@ void RLCHL(struct GB_CPU* cpu){
     cpu->_r.f &= ~N_FLAG;
     cpu->_r.f &= ~H_FLAG;
 
-    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), r8);
+    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), r8, cpu);
 
     cpu->_r.m = 4; cpu->_r.t = 16; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -2261,7 +2421,7 @@ void RLHL(struct GB_CPU* cpu){
     cpu->_r.f &= ~N_FLAG;
     cpu->_r.f &= ~H_FLAG;
 
-    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), r8);
+    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), r8, cpu);
 
     cpu->_r.m = 4; cpu->_r.t = 16; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -2305,20 +2465,20 @@ void RLA(struct GB_CPU* cpu){
  * @param r8 pointer to the 8 bit register to be shifted
  */
 void RRr8(struct GB_CPU* cpu, uint8_t* r8){
-    uint8_t C = (*r8 & 00000001); // store 7th bit for carry
+    uint8_t C = (*r8 & 0b00000001); // store 7th bit for carry
     uint8_t D = (cpu->_r.f & C_FLAG);
     *r8 = *r8 >> 1; // shift all bits to the right 1
-    if(C == 00000001){ // if 0th bit was 1
+    if(C == 0b00000001){ // if 0th bit was 1
         cpu->_r.f |= C_FLAG; // turn on carry flag
-    }else if (C == 00000000){ // if 0th bit was 0
+    }else if (C == 0b00000000){ // if 0th bit was 0
         cpu->_r.f &= ~C_FLAG; // turn off carry flag
     }else{
         printf("Somethings gone wrong, somethings gone very very wrong.");
     }
     if(D == C_FLAG){
-        *r8 |= 10000000;
+        *r8 |= 0b10000000;
     }else{
-        *r8 &= 01111111;
+        *r8 &= 0b01111111;
     }
     if(*r8 == 0){
        cpu->_r.f |= Z_FLAG; 
@@ -2365,7 +2525,7 @@ void RRHL(struct GB_CPU* cpu){
     cpu->_r.f &= ~N_FLAG;
     cpu->_r.f &= ~H_FLAG;
 
-    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), r8);
+    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), r8, cpu);
 
     cpu->_r.m = 4; cpu->_r.t = 16; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -2378,20 +2538,20 @@ void RRHL(struct GB_CPU* cpu){
  */
 void RRA(struct GB_CPU* cpu){
     uint8_t* r8 = &cpu->_r.a;
-    uint8_t C = (*r8 & 00000001); // store 0th bit for carry
+    uint8_t C = (*r8 & 0b00000001); // store 0th bit for carry
     uint8_t D = (cpu->_r.f & C_FLAG);
     *r8 = *r8 >> 1; // shift all bits to the left 1
-    if(C == 00000001){ // if 0th bit was 1
+    if(C == 0b00000001){ // if 0th bit was 1
         cpu->_r.f |= C_FLAG; // turn on carry flag
-    }else if (C == 00000000){ // if 0th bit was 0
+    }else if (C == 0b00000000){ // if 0th bit was 0
         cpu->_r.f &= ~C_FLAG; // turn off carry flag
     }else{
         printf("Somethings gone wrong, somethings gone very very wrong.");
     }
     if(D == C_FLAG){
-        *r8 |= 10000000;
+        *r8 |= 0b10000000;
     }else{
-        *r8 &= 01111111;
+        *r8 &= 0b01111111;
     }
     
     cpu->_r.f &= ~Z_FLAG;
@@ -2460,7 +2620,7 @@ void RRCHL(struct GB_CPU* cpu){
     cpu->_r.f &= ~N_FLAG;
     cpu->_r.f &= ~H_FLAG;
 
-    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), r8);
+    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), r8, cpu);
 
     cpu->_r.m = 4; cpu->_r.t = 16; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -2552,7 +2712,7 @@ void SLAHL(struct GB_CPU* cpu){
     cpu->_r.f &= ~N_FLAG;
     cpu->_r.f &= ~H_FLAG;
 
-    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), r8);
+    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), r8, cpu);
 
     cpu->_r.m = 4; cpu->_r.t = 16; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -2619,7 +2779,7 @@ void SRAHL(struct GB_CPU* cpu){
     cpu->_r.f &= ~N_FLAG;
     cpu->_r.f &= ~H_FLAG;
 
-    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), r8);
+    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), r8, cpu);
 
     cpu->_r.m = 4; cpu->_r.t = 16; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -2632,17 +2792,17 @@ void SRAHL(struct GB_CPU* cpu){
  * @param r8 pointer to the 8 bit register to be shifted
  */
 void SRLr8(struct GB_CPU* cpu, uint8_t* r8){
-    uint8_t C = (*r8 & 00000001); // store 7th bit for carry
+    uint8_t C = (*r8 & 0b00000001); // store 7th bit for carry
     *r8 = *r8 >> 1; // shift all bits to the right 1
-    if(C == 00000001){ // if 0th bit was 1
+    if(C == 0b00000001){ // if 0th bit was 1
         cpu->_r.f |= C_FLAG; // turn on carry flag
-    }else if (C == 00000000){ // if 0th bit was 0
+    }else if (C == 0b00000000){ // if 0th bit was 0
         cpu->_r.f &= ~C_FLAG; // turn off carry flag
     }else{
         printf("Somethings gone wrong, somethings gone very very wrong.");
     }
     
-    *r8 &= 01111111;
+    *r8 &= 0b01111111;
 
     if(*r8 == 0){
        cpu->_r.f |= Z_FLAG; 
@@ -2684,7 +2844,7 @@ void SRLHL(struct GB_CPU* cpu){
     cpu->_r.f &= ~N_FLAG;
     cpu->_r.f &= ~H_FLAG;
 
-    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), r8);
+    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), r8, cpu);
 
     cpu->_r.m = 4; cpu->_r.t = 16; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -2744,7 +2904,7 @@ void SWAPHL(struct GB_CPU* cpu){
     cpu->_r.f &= ~H_FLAG;
     cpu->_r.f &= ~N_FLAG;
 
-    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), r8);
+    MMU_wb(&cpu->mmu, ((cpu->_r.h << 8) + cpu->_r.l), r8, cpu);
 
     cpu->_r.m = 4; cpu->_r.t = 16; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -2764,10 +2924,10 @@ void SWAPHL(struct GB_CPU* cpu){
 void CALLn16(struct GB_CPU* cpu){
     uint16_t store = cpu->_r.pc + 3;
     
-    DECsp;
-    LD_SPR8 (cpu, &cpu->_r.sp,store>>8);
-    DECsp;
-    LD_SPR8(cpu, &cpu->_r.sp, (uint8_t)store);
+    cpu->_r.sp--;
+    MMU_wb(&cpu->mmu, cpu->_r.sp,(store>>8), cpu); 
+    cpu->_r.sp--;
+    MMU_wb(&cpu->mmu, cpu->_r.sp,((uint8_t)store), cpu);
 
 
     uint16_t r16 = ( (MMU_rb(&cpu->mmu, cpu->_r.pc+2, cpu)<<8) +  MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu)); //get n16 value
@@ -2787,10 +2947,10 @@ void CALLNZ(struct GB_CPU* cpu){
     uint8_t tempf = cpu->_r.f;
     if(((tempf &= ~Z_FLAG) ==  cpu->_r.f)){
         uint16_t store = cpu->_r.pc + 3;
-        DECsp;
-        LD_SPR8(cpu, &cpu->_r.sp,store>>8);
-        DECsp;
-        LD_SPR8(cpu, &cpu->_r.sp, (uint8_t)store);
+        cpu->_r.sp--;
+        MMU_wb(&cpu->mmu, cpu->_r.sp ,store>>8, cpu);
+        cpu->_r.sp--;
+        MMU_wb(&cpu->mmu, cpu->_r.sp ,store, cpu);
 
         uint16_t r16 = ( (MMU_rb(&cpu->mmu, cpu->_r.pc+2, cpu)<<8) +  MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu)); //get n16 value
         cpu->_r.pc = r16; //set pc equal to destination (jump to n16)
@@ -2816,9 +2976,9 @@ void CALLZ(struct GB_CPU* cpu){
     uint8_t tempf = cpu->_r.f;
     if(!((tempf &= ~Z_FLAG) ==  cpu->_r.f)){
         uint16_t store = cpu->_r.pc + 3;
-        DECsp;
+        DECsp(cpu);
         LD_SPR8(cpu, &cpu->_r.sp,store>>8);
-        DECsp;
+        DECsp(cpu);
         LD_SPR8(cpu, &cpu->_r.sp, (uint8_t)store);
 
         uint16_t r16 = ( (MMU_rb(&cpu->mmu, cpu->_r.pc+2, cpu)<<8) +  MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu)); //get n16 value
@@ -2845,9 +3005,9 @@ void CALLNC(struct GB_CPU* cpu){
     uint8_t tempf = cpu->_r.f;
     if(((tempf &= ~C_FLAG) ==  cpu->_r.f)){
         uint16_t store = cpu->_r.pc + 3;
-        DECsp;
+        DECsp(cpu);
         LD_SPR8(cpu, &cpu->_r.sp,store>>8);
-        DECsp;
+        DECsp(cpu);
         LD_SPR8(cpu, &cpu->_r.sp, (uint8_t)store);
 
         uint16_t r16 = ( (MMU_rb(&cpu->mmu, cpu->_r.pc+2, cpu)<<8) +  MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu)); //get n16 value
@@ -2874,9 +3034,9 @@ void CALLC(struct GB_CPU* cpu){
     uint8_t tempf = cpu->_r.f;
     if(!((tempf &= ~C_FLAG) ==  cpu->_r.f)){
         uint16_t store = cpu->_r.pc + 3;
-        DECsp;
+        DECsp(cpu);
         LD_SPR8(cpu, &cpu->_r.sp,store>>8);
-        DECsp;
+        DECsp(cpu);
         LD_SPR8(cpu, &cpu->_r.sp, (uint8_t)store);
 
         uint16_t r16 = ( (MMU_rb(&cpu->mmu, cpu->_r.pc+2, cpu)<<8) +  MMU_rb(&cpu->mmu, cpu->_r.pc+1, cpu)); //get n16 value
@@ -3050,7 +3210,7 @@ void JRNZ(struct GB_CPU* cpu){
     uint8_t tempf = cpu->_r.f;
     if(((cpu->_r.f &= ~Z_FLAG) ==  tempf)){
             cpu->_r.f = tempf;
-            cpu->_r.pc = (cpu->_r.pc+2) + r8;
+            cpu->_r.pc += 2 + r8;
             cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
             cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
             return;
@@ -3139,11 +3299,12 @@ void JRC(struct GB_CPU* cpu){
  */
 void RET(struct GB_CPU* cpu){
     uint8_t temp = (MMU_rb(&cpu->mmu, cpu->_r.sp, cpu));
-    INCsp;
+    printf("" + temp);
+    cpu->_r.sp++;
     cpu->_r.pc = MMU_rb(&cpu->mmu, cpu->_r.sp, cpu);
     cpu->_r.pc = cpu->_r.pc<<8;
     cpu->_r.pc += temp;
-    INCsp;
+    cpu->_r.sp++;
 
     cpu->_r.m = 4; cpu->_r.t = 16; //Time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -3176,11 +3337,11 @@ void RETNZ(struct GB_CPU* cpu){
     if(((tempf &= ~Z_FLAG) ==  cpu->_r.f)){
 
         uint8_t temp = (MMU_rb(&cpu->mmu, cpu->_r.sp, cpu));
-        INCsp;
+        INCsp(cpu);
         cpu->_r.pc = MMU_rb(&cpu->mmu, cpu->_r.sp, cpu);
         cpu->_r.pc = cpu->_r.pc<<8;
         cpu->_r.pc += temp;
-        INCsp;
+        INCsp(cpu);
 
         cpu->_r.m = 5; cpu->_r.t = 20; //Time of last cycle
         cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -3203,11 +3364,11 @@ void RETZ(struct GB_CPU* cpu){
     if(!((tempf &= ~Z_FLAG) ==  cpu->_r.f)){
 
         uint8_t temp = (MMU_rb(&cpu->mmu, cpu->_r.sp, cpu));
-        INCsp;
+        cpu->_r.sp++;
         cpu->_r.pc = MMU_rb(&cpu->mmu, cpu->_r.sp, cpu);
         cpu->_r.pc = cpu->_r.pc<<8;
         cpu->_r.pc += temp;
-        INCsp;
+        cpu->_r.sp++;
 
         cpu->_r.m = 5; cpu->_r.t = 20; //Time of last cycle
         cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -3230,11 +3391,11 @@ void RETNC(struct GB_CPU* cpu){
     if(((tempf &= ~C_FLAG) ==  cpu->_r.f)){
 
         uint8_t temp = (MMU_rb(&cpu->mmu, cpu->_r.sp, cpu));
-        INCsp;
+        cpu->_r.sp++;
         cpu->_r.pc = MMU_rb(&cpu->mmu, cpu->_r.sp, cpu);
         cpu->_r.pc = cpu->_r.pc<<8;
         cpu->_r.pc += temp;
-        INCsp;
+        cpu->_r.sp++;
 
         cpu->_r.m = 5; cpu->_r.t = 20; //Time of last cycle
         cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -3257,11 +3418,11 @@ void RETC(struct GB_CPU* cpu){
     if(!((tempf &= ~C_FLAG) ==  cpu->_r.f)){
 
         uint8_t temp = (MMU_rb(&cpu->mmu, cpu->_r.sp, cpu));
-        INCsp;
+        INCsp(cpu);
         cpu->_r.pc = MMU_rb(&cpu->mmu, cpu->_r.sp, cpu);
         cpu->_r.pc = cpu->_r.pc<<8;
         cpu->_r.pc += temp;
-        INCsp;
+        INCsp(cpu);
 
         cpu->_r.m = 5; cpu->_r.t = 20; //Time of last cycle
         cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -3322,11 +3483,11 @@ void EI(struct GB_CPU* cpu){
 void POPAF(struct GB_CPU* cpu){
 
     cpu->_r.f = (MMU_rb(&cpu->mmu, cpu->_r.sp, cpu));
-    INCsp;
-    cpu->_r.a = MMU_rb(&cpu->mmu, cpu->_r.sp, cpu);
-    INCsp;
+    cpu->_r.sp++;
+    cpu->_r.a = (MMU_rb(&cpu->mmu, cpu->_r.sp, cpu));
+    cpu->_r.sp++;
 
-    cpu->_r.f &= 11110000;
+    cpu->_r.f &= 0b11110000;
 
     cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -3342,9 +3503,9 @@ void POPAF(struct GB_CPU* cpu){
 void POPr16(struct GB_CPU* cpu, uint8_t* r8, uint8_t* r82){
 
     *r8 = (MMU_rb(&cpu->mmu, cpu->_r.sp, cpu));
-    INCsp;
+    cpu->_r.sp++;
     *r82 = MMU_rb(&cpu->mmu, cpu->_r.sp, cpu);
-    INCsp;
+    cpu->_r.sp++;
 
     cpu->_r.m = 3; cpu->_r.t = 12; //time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -3357,10 +3518,10 @@ void POPr16(struct GB_CPU* cpu, uint8_t* r8, uint8_t* r82){
  */
 void PUSHAF(struct GB_CPU* cpu){
 
-    DECsp;
-    LD_SPR8(cpu, &cpu->_r.sp,cpu->_r.a);
-    DECsp;
-    LD_SPR8(cpu, &cpu->_r.sp, (cpu->_r.f));
+    cpu->_r.sp--;
+    MMU_wb(&cpu->mmu, cpu->_r.sp,cpu->_r.a, cpu);
+    cpu->_r.sp--;
+    MMU_wb(&cpu->mmu, cpu->_r.sp,cpu->_r.f,cpu);
 
     cpu->_r.m = 4; cpu->_r.t = 16; //time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -3375,10 +3536,10 @@ void PUSHAF(struct GB_CPU* cpu){
  */
 void PUSHr16(struct GB_CPU* cpu, uint8_t* r8, uint8_t* r82){
 
-    DECsp;
-    LD_SPR8(cpu, &cpu->_r.sp, *r82);
-    DECsp;
-    LD_SPR8(cpu, &cpu->_r.sp, *r8);
+    cpu->_r.sp--;
+    MMU_wb(&cpu->mmu, cpu->_r.sp, *r82, cpu);
+    cpu->_r.sp--;
+    MMU_wb(&cpu->mmu, cpu->_r.sp, *r8, cpu);
 
     cpu->_r.m = 4; cpu->_r.t = 16; //time of last cycle
     cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
@@ -3394,8 +3555,6 @@ void PUSHr16(struct GB_CPU* cpu, uint8_t* r8, uint8_t* r82){
  * @brief Function for do nothing.
  */
 void NOP(struct GB_CPU* cpu){
-    cpu->_r.m = 1; cpu->_r.t = 4; //Time of last cycle
-    cpu->_c.m += cpu->_r.m; cpu->_c.t += cpu->_r.t; //Total time of cycles
     cpu->_r.pc += 1; //incrememnt past instruction and value
 }
 
@@ -3501,10 +3660,9 @@ void SCF(struct GB_CPU* cpu){
 /**
  * @brief CB switch set
  */
-void ExecCbOp(struct GB_CPU* GCPU, uint16_t* pc) {
+void ExecCbOp(struct GB_CPU* GCPU, uint16_t pc) {
     // Read the opcode that follows the 0xCB prefix
-    uint8_t opcode = MMU_rb(&GCPU->mmu, *pc, GCPU);
-
+     uint8_t opcode = MMU_rb(&GCPU->mmu, pc, GCPU);
     switch (opcode) {
 
         // RLC
@@ -3813,8 +3971,8 @@ void ExecCbOp(struct GB_CPU* GCPU, uint16_t* pc) {
 
 
 // Method that actually executes the op codes
-void ExecOp(struct GB_CPU* GCPU, uint16_t* pc){
-    uint8_t opcode = MMU_rb(&GCPU->mmu, *pc, GCPU);
+void ExecOp(struct GB_CPU* GCPU, uint16_t pc){
+    uint8_t opcode = MMU_rb(&GCPU->mmu, pc, GCPU);
     switch (opcode) {
         case 0x00: NOP(GCPU); break;
         case 0x01: LD_BC(GCPU); break;
@@ -3886,7 +4044,7 @@ void ExecOp(struct GB_CPU* GCPU, uint16_t* pc){
         case 0x43: LD_r8(GCPU, &GCPU->_r.b, GCPU->_r.e); break;
         case 0x44: LD_r8(GCPU, &GCPU->_r.b, GCPU->_r.h); break;
         case 0x45: LD_r8(GCPU, &GCPU->_r.b, GCPU->_r.l); break;
-        case 0x46: LD_r8HL(GCPU, GCPU->_r.b); break;
+        case 0x46: LD_r8HL(GCPU, &GCPU->_r.b); break;
         case 0x47: LD_r8(GCPU, &GCPU->_r.b, GCPU->_r.a); break;
         case 0x48: LD_r8(GCPU, &GCPU->_r.c, GCPU->_r.b); break;
         case 0x49: LD_r8(GCPU, &GCPU->_r.c, GCPU->_r.c); break;
@@ -3894,7 +4052,7 @@ void ExecOp(struct GB_CPU* GCPU, uint16_t* pc){
         case 0x4B: LD_r8(GCPU, &GCPU->_r.c, GCPU->_r.e); break;
         case 0x4C: LD_r8(GCPU, &GCPU->_r.c, GCPU->_r.h); break;
         case 0x4D: LD_r8(GCPU, &GCPU->_r.c, GCPU->_r.l); break;
-        case 0x4E: LD_r8HL(GCPU, GCPU->_r.c); break;
+        case 0x4E: LD_r8HL(GCPU, &GCPU->_r.c); break;
         case 0x4F: LD_r8(GCPU, &GCPU->_r.c, GCPU->_r.a); break;
         case 0x50: LD_r8(GCPU, &GCPU->_r.d, GCPU->_r.b); break;
         case 0x51: LD_r8(GCPU, &GCPU->_r.d, GCPU->_r.c); break;
@@ -3902,7 +4060,7 @@ void ExecOp(struct GB_CPU* GCPU, uint16_t* pc){
         case 0x53: LD_r8(GCPU, &GCPU->_r.d, GCPU->_r.e); break;
         case 0x54: LD_r8(GCPU, &GCPU->_r.d, GCPU->_r.h); break;
         case 0x55: LD_r8(GCPU, &GCPU->_r.d, GCPU->_r.l); break;
-        case 0x56: LD_r8HL(GCPU, GCPU->_r.d); break;
+        case 0x56: LD_r8HL(GCPU, &GCPU->_r.d); break;
         case 0x57: LD_r8(GCPU, &GCPU->_r.d, GCPU->_r.a); break;
         case 0x58: LD_r8(GCPU, &GCPU->_r.e, GCPU->_r.b); break;
         case 0x59: LD_r8(GCPU, &GCPU->_r.e, GCPU->_r.c); break;
@@ -3910,7 +4068,7 @@ void ExecOp(struct GB_CPU* GCPU, uint16_t* pc){
         case 0x5B: LD_r8(GCPU, &GCPU->_r.e, GCPU->_r.e); break;
         case 0x5C: LD_r8(GCPU, &GCPU->_r.e, GCPU->_r.h); break;
         case 0x5D: LD_r8(GCPU, &GCPU->_r.e, GCPU->_r.l); break;
-        case 0x5E: LD_r8HL(GCPU, GCPU->_r.e); break;
+        case 0x5E: LD_r8HL(GCPU, &GCPU->_r.e); break;
         case 0x5F: LD_r8(GCPU, &GCPU->_r.e, GCPU->_r.a); break;
         case 0x60: LD_r8(GCPU, &GCPU->_r.h, GCPU->_r.b); break;
         case 0x61: LD_r8(GCPU, &GCPU->_r.h, GCPU->_r.c); break;
@@ -3918,7 +4076,7 @@ void ExecOp(struct GB_CPU* GCPU, uint16_t* pc){
         case 0x63: LD_r8(GCPU, &GCPU->_r.h, GCPU->_r.e); break;
         case 0x64: LD_r8(GCPU, &GCPU->_r.h, GCPU->_r.h); break;
         case 0x65: LD_r8(GCPU, &GCPU->_r.h, GCPU->_r.l); break;
-        case 0x66: LD_r8HL(GCPU, GCPU->_r.h); break;
+        case 0x66: LD_r8HL(GCPU, &GCPU->_r.h); break;
         case 0x67: LD_r8(GCPU, &GCPU->_r.h, GCPU->_r.a); break;
         case 0x68: LD_r8(GCPU, &GCPU->_r.l, GCPU->_r.b); break;
         case 0x69: LD_r8(GCPU, &GCPU->_r.l, GCPU->_r.c); break;
@@ -3926,7 +4084,7 @@ void ExecOp(struct GB_CPU* GCPU, uint16_t* pc){
         case 0x6B: LD_r8(GCPU, &GCPU->_r.l, GCPU->_r.e); break;
         case 0x6C: LD_r8(GCPU, &GCPU->_r.l, GCPU->_r.h); break;
         case 0x6D: LD_r8(GCPU, &GCPU->_r.l, GCPU->_r.l); break;
-        case 0x6E: LD_r8HL(GCPU, GCPU->_r.l); break;
+        case 0x6E: LD_r8HL(GCPU, &GCPU->_r.l); break;
         case 0x6F: LD_r8(GCPU, &GCPU->_r.l, GCPU->_r.a); break;
         case 0x70: LD_HLr8(GCPU, GCPU->_r.b); break;
         case 0x71: LD_HLr8(GCPU, GCPU->_r.c); break;
@@ -3942,7 +4100,7 @@ void ExecOp(struct GB_CPU* GCPU, uint16_t* pc){
         case 0x7B: LD_r8(GCPU, &GCPU->_r.a, GCPU->_r.e); break;
         case 0x7C: LD_r8(GCPU, &GCPU->_r.a, GCPU->_r.h); break;
         case 0x7D: LD_r8(GCPU, &GCPU->_r.a, GCPU->_r.l); break;
-        case 0x7E: LD_r8HL(GCPU, GCPU->_r.a); break;
+        case 0x7E: LD_r8HL(GCPU, &GCPU->_r.a); break;
         case 0x7F: LD_r8(GCPU, &GCPU->_r.a, GCPU->_r.a); break;
         case 0x80: ADD_ar8(GCPU, GCPU->_r.b); break;
         case 0x81: ADD_ar8(GCPU, GCPU->_r.c); break;
@@ -4019,7 +4177,7 @@ void ExecOp(struct GB_CPU* GCPU, uint16_t* pc){
         case 0xC8: RETZ(GCPU); break;
         case 0xC9: RET(GCPU); break;
         case 0xCA: JPZ(GCPU); break;
-        case 0xCB: ExecCbOp(GCPU, &GCPU->_r.pc+1); break;
+        case 0xCB: ExecCbOp(GCPU, pc+1); break;
         case 0xCC: CALLZ(GCPU); break;
         case 0xCD: CALLn16(GCPU); break;
         case 0xCE: ADC_an8(GCPU); break;
@@ -4037,9 +4195,9 @@ void ExecOp(struct GB_CPU* GCPU, uint16_t* pc){
         case 0xDC: CALLC(GCPU); break;
         case 0xDE: SBC_an8(GCPU); break;
         case 0xDF: RST(GCPU, 0x18); break;
-        case 0xE0: LDH_n16A(GCPU); break;
+        case 0xE0: LDHu8A(GCPU); break;
         case 0xE1: POPr16(GCPU, &GCPU->_r.l, &GCPU->_r.h); break;
-        case 0xE2: LDHC(GCPU); break;
+        case 0xE2: LDHCA(GCPU); break;
         case 0xE5: PUSHr16(GCPU, &GCPU->_r.l, &GCPU->_r.h); break;
         case 0xE6: AND_an(GCPU); break;
         case 0xE7: RST(GCPU, 0x20); break;
@@ -4048,7 +4206,7 @@ void ExecOp(struct GB_CPU* GCPU, uint16_t* pc){
         case 0xEA: LD_n16A(GCPU); break;
         case 0xEE: XORn8(GCPU); break;
         case 0xEF: RST(GCPU,0x28); break;
-        case 0xF0: LDHCu8(GCPU); break;
+        case 0xF0: LDHAu8(GCPU); break;
         case 0xF1: POPAF(GCPU); break;
         case 0xF2: LDHAC(GCPU); break;
         case 0xF3: DI(GCPU); break;
@@ -4057,7 +4215,7 @@ void ExecOp(struct GB_CPU* GCPU, uint16_t* pc){
         case 0xF7: RST(GCPU,0x30); break;
         case 0xF8: LD_HLspe8(GCPU); break;
         case 0xF9: LD_HLSP(GCPU); break;
-        case 0xFA: LDH_An16(GCPU); break;
+        case 0xFA: LD_Au16(GCPU); break;
         case 0xFB: EI(GCPU); break;
         case 0xFE: CP_an(GCPU); break;
         case 0xFF: RST(GCPU,0x38); break;
@@ -4068,27 +4226,62 @@ void ExecOp(struct GB_CPU* GCPU, uint16_t* pc){
 int main(){
 
     initialize();
+    BootSkipInit();
     pending_ei = 0;
     stop_var = 1;
 
-    MMU_load(&GlobalCPU.mmu, "\\Users\\rhett\\Downloads\\GB-emulator\\cpu_instrs.gb");
+    MMU_load(&GlobalCPU.mmu, "02-interrupts.gb");
+    
+
+    MMU_wb(&GlobalCPU.mmu,0xFF44, 0x90, &GlobalCPU);
+
+// Initialize register logging
+    init_register_log("register_log.txt");  // CSV format for easy analysis
+    // OR use: init_register_log("register_log.txt"); with log_registers_detailed
+    
+    uint64_t step_count = 0;
 
     while(stop_var){
 
-        ExecOp(&GlobalCPU, &GlobalCPU._r.pc);
+        log_registers(&GlobalCPU, step_count);
 
-        if (pending_ei) {
+        if(GlobalCPU._r.pc > 70000){
+            stop_var = 0;
+            break;
+        }
+
+        GlobalCPU._r.pc;
+
+        ExecOp(&GlobalCPU, GlobalCPU._r.pc);
+
+        if (pending_ei > 0) {
             pending_ei--;
 
             if (!pending_ei) {
                 GlobalCPU._r.ime = 1;
         }
     }
+        step_count++;
 
+        if (step_count == 151346){
+            step_count = step_count;
+        }
 
+        if (step_count == 300000){
+            step_count = step_count;
+        }
+        
+        // Optional: Progress indicator
+        if (step_count % 10000 == 0) {
+            printf("Executed %llu instructions...\n", step_count);
+        }
 
     }
 
+    printf("\nEmulation stopped after %llu instructions.\n", step_count);
+    
+    // Close the log file
+    close_register_log();
+    exit(1);
     return 1;
 }
-
